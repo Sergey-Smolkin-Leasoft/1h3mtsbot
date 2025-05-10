@@ -19,6 +19,7 @@ window.addEventListener('load', () => {
 
     let chart = null; // Объявляем chart здесь
     let candlestickSeries = null; // Объявляем candlestickSeries здесь
+    let trendLineSeries = []; // Массив для хранения серий линий тренда
 
     try {
         // Создаем экземпляр графика
@@ -39,6 +40,8 @@ window.addEventListener('load', () => {
                 timeVisible: true,
                 secondsVisible: false,
                 borderColor: '#B0B0B0', // Цвет границы шкалы времени (темнее серого)
+                // Явно указываем таймзону UTC
+                timezone: 'UTC',
             },
             crosshair: {
                 mode: LightweightCharts.CrosshairMode.Normal,
@@ -92,60 +95,97 @@ window.addEventListener('load', () => {
             return data;
         } catch (error) {
             console.error('fetchChartData: Ошибка при получении данных графика:', error); // Логируем ошибку fetch
-            return { ohlcv: [], markers: [] };
+            return { ohlcv: [], markers: [], trendLines: [] }; // Возвращаем пустой массив для trendLines по умолчанию
         }
     }
 
     // Функция для форматирования данных OHLCV для Lightweight Charts
     function formatOhlcvData(data) {
         const formattedData = data.map(item => ({
-            time: new Date(item.time).getTime() / 1000, // Преобразуем в timestamp в секундах
+            // Преобразуем в timestamp в секундах.
+            // Важно, чтобы исходное время в item.time было в UTC, если мы указываем timezone: 'UTC' в настройках графика.
+            time: new Date(item.time).getTime() / 1000,
             open: parseFloat(item.open),
             high: parseFloat(item.high),
             low: parseFloat(item.low),
             close: parseFloat(item.close),
         }));
         // Логируем первые несколько отформатированных точек времени
-        console.log('formatOhlcvData: Первые 5 отформатированных временных меток:', formattedData.slice(0, 5).map(item => item.time));
+        console.log('formatOhlcvData: Первые 5 отформатированных временных меток (Unix Timestamp в секундах):', formattedData.slice(0, 5).map(item => item.time));
         return formattedData;
     }
 
     // Функция для форматирования данных маркеров для Lightweight Charts
     function formatMarkerData(data) {
+         // Улучшенная карта маркеров для точек структуры
          const markerMap = {
-             'HH': { shape: 'arrowDown', color: '#2962FF', position: 'aboveBar' }, // Синий
-             'HL': { shape: 'circle', color: '#26A69A', position: 'belowBar' },   // Зеленый
-             'LH': { shape: 'arrowUp', color: '#FF0000', position: 'belowBar' },   // Красный
-             'LL': { shape: 'circle', color: '#FF0000', position: 'aboveBar' },   // Красный
-             'H': { shape: 'square', color: '#2962FF', position: 'aboveBar' },    // Синий
-             'L': { shape: 'square', color: '#26A69A', position: 'belowBar' },    // Зеленый
+             // Точки тренда (HH, HL, LH, LL) - делаем их более заметными
+             'HH': { shape: 'arrowUp', color: '#2962FF', position: 'aboveBar', size: 1.5 }, // HH - Синяя стрелка вверх, больше размер
+             'HL': { shape: 'circle', color: '#26A69A', position: 'belowBar', size: 1.2 },   // HL - Зеленый круг, средний размер
+             'LH': { shape: 'arrowDown', color: '#FF0000', position: 'belowBar', size: 1.5 }, // LH - Красная стрелка вниз, больше размер
+             'LL': { shape: 'circle', color: '#FF0000', position: 'aboveBar', size: 1.2 },   // LL - Красный круг, средний размер
+
+             // Простые максимумы/минимумы (H, L) - менее заметные
+             'H': { shape: 'square', color: '#808080', position: 'aboveBar', size: 1 },    // H - Серый квадрат, стандартный размер
+             'L': { shape: 'square', color: '#808080', position: 'belowBar', size: 1 },    // L - Серый квадрат, стандартный размер
+
+             // Сессионные фракталы (можно оставить как есть или настроить)
              'F_H_AS': { shape: 'circle', color: '#FFA500', position: 'aboveBar' }, // Оранжевый
              'F_L_AS': { shape: 'circle', color: '#FFA500', position: 'belowBar' }, // Оранжевый
              'F_H_NY1': { shape: 'circle', color: '#1E90FF', position: 'aboveBar' }, // Голубой
              'F_L_NY1': { shape: 'circle', color: '#1E90FF', position: 'belowBar' }, // Голубой
-             'SETUP_Resist': { shape: 'square', color: '#000000', position: 'aboveBar', size: 1.5 }, // Черный
-             'SETUP_Support': { shape: 'square', color: '#000000', position: 'belowBar', size: 1.5 }, // Черный
+
+             // Сетапы (можно оставить как есть или настроить)
+             'SETUP_Resist': { shape: 'square', color: '#000000', position: 'aboveBar', size: 1.5 }, // Черный квадрат, больше размер
+             'SETUP_Support': { shape: 'square', color: '#000000', position: 'belowBar', size: 1.5 }, // Черный квадрат, больше размер
              'UNKNOWN_SETUP': { shape: 'circle', color: '#808080', position: 'aboveBar' } // Серый
          };
 
          return data.map(item => {
-             const markerType = markerMap[item.type] || { shape: 'circle', color: '#808080', position: 'aboveBar' };
+             const markerType = markerMap[item.type] || { shape: 'circle', color: '#808080', position: 'aboveBar' }; // Дефолтный маркер
              return {
-                 time: new Date(item.time).getTime() / 1000,
+                 time: new Date(item.time).getTime() / 1000, // Преобразуем в timestamp в секундах
                  position: markerType.position,
                  color: markerType.color,
                  shape: markerType.shape,
                  text: item.type,
-                 size: markerType.size || 1,
+                 size: markerType.size || 1, // Размер маркера, по умолчанию 1
              };
          });
      }
+
+    // Функция для форматирования данных линий тренда для Lightweight Charts
+    function formatTrendLineData(data) {
+        return data.map(line => ({
+            // Lightweight Charts ожидает массив точек для LineSeries
+            data: [
+                { time: new Date(line.start_time).getTime() / 1000, value: line.start_price },
+                { time: new Date(line.end_time).getTime() / 1000, value: line.end_price }
+            ],
+            color: line.color || '#000000', // Цвет линии, по умолчанию черный
+            lineWidth: 2, // Толщина линии
+            // Используем числовое значение для LineStyle, полученное с бэкенда
+            lineStyle: line.lineStyle !== undefined ? line.lineStyle : 0, // По умолчанию Solid (0)
+            crosshairMarkerVisible: false, // Скрыть маркер на линии при наведении
+            lastValueVisible: false, // Скрыть последнее значение на линии
+            priceLineVisible: false, // Скрыть горизонтальную линию цены
+        }));
+    }
+
 
     // Функция для загрузки и отображения данных графика
     async function loadChartData(timeframe) {
         console.log(`loadChartData: Начало загрузки данных для таймфрейма: ${timeframe}`); // Логируем начало
         const chartData = await fetchChartData(timeframe);
         console.log('loadChartData: Данные получены из fetchChartData:', chartData); // Логируем данные после fetch
+
+        // Очищаем старые серии линий тренда перед добавлением новых
+        trendLineSeries.forEach(series => {
+            if (chart && series) {
+                chart.removeSeries(series);
+            }
+        });
+        trendLineSeries = []; // Очищаем массив ссылок
 
         if (chartData && chartData.ohlcv && chartData.ohlcv.length > 0) {
             console.log(`loadChartData: Получено ${chartData.ohlcv.length} свечей.`); // Логируем количество свечей
@@ -195,6 +235,34 @@ window.addEventListener('load', () => {
                  console.error('loadChartData: Невозможно очистить маркеры: createSeriesMarkers и setMarkers недоступны.');
             }
 
+            // Добавляем линии тренда
+            if (chartData.trendLines && chartData.trendLines.length > 0) {
+                console.log(`loadChartData: Получено ${chartData.trendLines.length} линий тренда.`);
+                const formattedTrendLines = formatTrendLineData(chartData.trendLines);
+
+                // Явная проверка, что chart.addLineSeries является функцией перед использованием
+                if (chart && typeof chart.addSeries === 'function') {
+                    formattedTrendLines.forEach(lineData => {
+                        const lineSeries = chart.addSeries({
+                            color: lineData.color,
+                            lineWidth: lineData.lineWidth,
+                            lineStyle: lineData.lineStyle, // Теперь используем числовое значение
+                            crosshairMarkerVisible: lineData.crosshairMarkerVisible,
+                            lastValueVisible: lineData.lastValueVisible,
+                            priceLineVisible: lineData.priceLineVisible,
+                        });
+                        lineSeries.setData(lineData.data);
+                        trendLineSeries.push(lineSeries); // Сохраняем ссылку на серию линии
+                        console.log('loadChartData: Серия линии тренда добавлена.');
+                    });
+                } else {
+                    console.error('loadChartData: chart.addLineSeries не является функцией. Невозможно добавить линии тренда.');
+                }
+
+            } else {
+                console.log('loadChartData: Нет данных для линий тренда.');
+            }
+
 
             chart.timeScale().fitContent();
              console.log('loadChartData: График подогнан по содержимому.'); // Логируем подгонку
@@ -206,7 +274,7 @@ window.addEventListener('load', () => {
                   console.log('loadChartData: График очищен.'); // Логируем очистку графика
              }
              // Очищаем маркеры, используя createSeriesMarkers или setMarkers
-             if (candlestickSeries && typeof LightweightCharts.createSeriesMarkers === 'function') {
+             if (typeof LightweightCharts.createSeriesMarkers === 'function') {
                  LightweightCharts.createSeriesMarkers(candlestickSeries, []);
                   console.log('loadChartData: Маркеры очищены через createSeriesMarkers.'); // Логируем очистку маркеров
              } else if (candlestickSeries && typeof candlestickSeries.setMarkers === 'function') {
@@ -216,6 +284,14 @@ window.addEventListener('load', () => {
              } else {
                  console.error('loadChartData: Невозможно очистить маркеры при отсутствии данных: createSeriesMarkers и setMarkers недоступны.');
              }
+             // Очищаем серии линий тренда, если они были
+             trendLineSeries.forEach(series => {
+                 if (chart && series) {
+                     chart.removeSeries(series);
+                 }
+             });
+             trendLineSeries = [];
+             console.log('loadChartData: Серии линий тренда очищены.');
         }
          console.log(`loadChartData: Завершение загрузки данных для таймфрейма: ${timeframe}`); // Логируем завершение
     }
