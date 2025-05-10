@@ -89,7 +89,7 @@ window.addEventListener('load', () => {
             // Добавляем параметры timeframe и backtestDate в URL запроса
             let url = `/api/chart_data?interval=${timeframe}`;
             if (backtestDate) {
-                // backtestDate должен быть в формате YYYY-MM-DD
+                // backtestDate должен быть в форматеYYYY-MM-DD
                 url += `&endDate=${backtestDate}`;
             }
 
@@ -126,17 +126,11 @@ window.addEventListener('load', () => {
 
     // Функция для форматирования данных маркеров для Lightweight Charts
     function formatMarkerData(data) {
-         // Обновленная карта маркеров: удалены HH, HL, LH, LL
+         // Обновленная карта маркеров: удалены HH, HL, LH, LL и F_H_AS, F_L_AS, F_H_NY1, F_L_NY1
          const markerMap = {
              // Простые максимумы/минимумы (H, L)
              'H': { shape: 'square', color: '#808080', position: 'aboveBar', size: 1 },    // H - Серый квадрат, стандартный размер
              'L': { shape: 'square', color: '#808080', position: 'belowBar', size: 1 },    // L - Серый квадрат, стандартный размер
-
-             // Сессионные фракталы (можно оставить как есть или настроить)
-             'F_H_AS': { shape: 'circle', color: '#FFA500', position: 'aboveBar' }, // Оранжевый
-             'F_L_AS': { shape: 'circle', color: '#FFA500', position: 'belowBar' }, // Оранжевый
-             'F_H_NY1': { shape: 'circle', color: '#1E90FF', position: 'aboveBar' }, // Голубой
-             'F_L_NY1': { shape: 'circle', color: '#1E90FF', position: 'belowBar' }, // Голубой
 
              // Сетапы (можно оставить как есть или настроить)
              'SETUP_Resist': { shape: 'square', color: '#000000', position: 'aboveBar', size: 1.5 }, // Черный квадрат, больше размер
@@ -256,7 +250,7 @@ window.addEventListener('load', () => {
                  console.log('loadChartData: Данные свечей установлены.'); // Логируем установку данных
              } else {
                  console.error('loadChartData: candlestickSeries недействителен или не имеет метода setData.');
-                 // Пытаемся отобразить свотку анализа, даже если график не загрузился
+                 // Пытаемся отобразить сводку анализа, даже если график не загрузился
                  displayAnalysisSummary(chartData.analysisSummary);
                  return; // Выходим, если не можем установить данные
              }
@@ -333,7 +327,7 @@ window.addEventListener('load', () => {
             chart.timeScale().fitContent();
              console.log('loadChartData: График подогнан по содержимому.'); // Логируем подгонку
         } else {
-            console.warn(`loadChartData: Нет данных для отображения графика для таймфрейма ${timeframe}.`); // Логируем отсутствие данных
+            console.warn(`loadChartData: Нет данных для отображения графика для таймфрейма ${timeframe} до даты ${backtestDate || 'последняя доступная'}.`); // Логируем отсутствие данных
              // Проверяем, что candlestickSeries действителен перед очисткой
              if (candlestickSeries && typeof candlestickSeries.setData === 'function') {
                  candlestickSeries.setData([]); // Очищаем график, если нет данных
@@ -363,7 +357,7 @@ window.addEventListener('load', () => {
              displayAnalysisSummary(chartData ? chartData.analysisSummary : null);
              console.log('loadChartData: Сводка анализа отображена (нет данных графика).');
         }
-         console.log(`loadChartData: Завершение загрузки данных для таймфрейма: ${timeframe}`); // Логируем завершение
+         console.log(`loadChartData: Завершение загрузки данных для таймфрейма: ${timeframe} до даты: ${backtestDate || 'последняя доступная'}`); // Логируем завершение
     }
 
     // Обработчик изменения выбора таймфрейма
