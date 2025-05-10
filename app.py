@@ -16,7 +16,8 @@ try:
         find_swing_points,
         analyze_market_structure_points,
         determine_overall_market_context,
-        determine_trend_lines # Импортируем новую функцию
+        determine_trend_lines,
+        summarize_analysis # Импортируем новую функцию сводки
     )
     from ts_logic.fractal_analyzer import analyze_fractal_setups
     import pandas as pd
@@ -67,7 +68,8 @@ def get_chart_data():
 
     if market_data_df is None or market_data_df.empty:
         print(f"API: Не удалось получить данные OHLCV для таймфрейма {interval}.")
-        return jsonify({"ohlcv": [], "markers": [], "trendLines": []}), 500
+        # В случае ошибки возвращаем пустые данные, включая пустую сводку анализа
+        return jsonify({"ohlcv": [], "markers": [], "trendLines": [], "analysisSummary": {"general": [], "detailed": []}}), 500
 
     if market_data_df.index.tzinfo is None:
         market_data_df = market_data_df.tz_localize('UTC')
@@ -87,11 +89,12 @@ def get_chart_data():
 
     # 2. Анализ структуры, фракталов и линий тренда
     # ВАЖНО: Функции анализа структуры и фракталов сейчас заточены под 1H.
-    # Линии тренда будут определяться только если запрошен 1H.
+    # Линии тренда и сводка анализа будут определяться только если запрошен 1H.
     # Для других таймфреймов потребуется адаптация логики анализа.
 
     all_points_for_plot = []
     trend_lines_data = [] # Список для данных линий тренда
+    analysis_summary_data = {"general": [], "detailed": []} # Словарь для сводки анализа
 
     # Запускаем анализ только если запрошенный таймфрейм соответствует тому, для которого написан анализ (1h)
     if interval == settings.CONTEXT_TIMEFRAME:
@@ -104,7 +107,7 @@ def get_chart_data():
         # Анализ сессионных фракталов и поиск сетапов
         session_fractal_and_setup_points = analyze_fractal_setups(market_data_df, current_processing_datetime)
 
-        # Определение общего контекста (нужен для логики линий тренда)
+        # Определение общего контекста (нужен для логики линий тренда и сводки)
         overall_context = determine_overall_market_context(structure_points)
         print(f"API: Общий рыночный контекст для {interval}: {overall_context}")
 
@@ -114,6 +117,16 @@ def get_chart_data():
             # Определение линий тренда на основе структуры и контекста
             trend_lines_data = determine_trend_lines(structure_points, overall_context)
             print(f"API: Определено {len(trend_lines_data)} линий тренда для {interval}.")
+
+            # Сбор сводки анализа
+            analysis_summary_data = summarize_analysis(
+                market_data_df,
+                structure_points,
+                session_fractal_and_setup_points,
+                overall_context
+            )
+            print(f"API: Собрана сводка анализа для {interval}.")
+
 
         if session_fractal_and_setup_points:
             all_points_for_plot.extend(session_fractal_and_setup_points)
@@ -140,19 +153,21 @@ def get_chart_data():
                 "price": point['price'],
             })
     else:
-        # Если таймфрейм не 1h, не запускаем текущий анализ структуры/фракталов/линий тренда
+        # Если таймфрейм не 1h, не запускаем текущий анализ
         marker_data = []
         trend_lines_data = []
-        print(f"API: Анализ структуры, сетапов и линий тренда пропущен для таймфрейма {interval}, т.к. он отличается от {settings.CONTEXT_TIMEFRAME}.")
+        analysis_summary_data = {"general": [], "detailed": []}
+        print(f"API: Анализ (структура, сетапы, линии, сводка) пропущен для таймфрейма {interval}, т.к. он отличается от {settings.CONTEXT_TIMEFRAME}.")
 
 
-    print(f"API: Подготовлено {len(ohlcv_data)} свечей, {len(marker_data)} маркеров и {len(trend_lines_data)} линий тренда для ТФ {interval}.")
+    print(f"API: Подготовлено {len(ohlcv_data)} свечей, {len(marker_data)} маркеров, {len(trend_lines_data)} линий тренда и сводка для ТФ {interval}.")
 
-    # Возвращаем данные в формате JSON, включая trendLines
+    # Возвращаем данные в формате JSON, включая trendLines и analysisSummary
     return jsonify({
         "ohlcv": ohlcv_data,
         "markers": marker_data,
-        "trendLines": trend_lines_data # Добавляем данные о линиях тренда
+        "trendLines": trend_lines_data,
+        "analysisSummary": analysis_summary_data # Добавляем сводку анализа
     })
 
 # Запуск сервера Flask

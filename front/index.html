@@ -8,9 +8,9 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="/css/styles.css">
 </head>
-<body class="bg-white text-black flex items-center justify-center min-h-screen p-4">
-    <div class="app-window bg-gray-800 rounded-lg shadow-xl overflow-hidden flex">
-        <aside class="w-64 p-4 flex flex-col flex-shrink-0 bg-white text-black">
+<body class="bg-white text-black flex h-screen overflow-hidden">
+    <div class="app-window flex flex-grow">
+        <aside class="w-64 p-4 flex flex-col flex-shrink-0 bg-white text-black overflow-y-auto">
             <h2 class="text-xl font-bold mb-4 text-black">Настройки</h2>
 
             <div class="mb-6">
@@ -28,10 +28,21 @@
                 </select>
             </div>
 
+            <div id="analysis-summary-general" class="mb-6">
+                <h3 class="text-lg font-semibold mb-2 text-gray-800">Общая информация:</h3>
+                <ul class="text-sm text-gray-700">
+                    </ul>
+            </div>
+
+            <div id="analysis-summary-detailed" class="mb-6">
+                <h3 class="text-lg font-semibold mb-2 text-gray-800">Подробная информация:</h3>
+                 <ul class="text-sm text-gray-700">
+                    </ul>
+            </div>
+
             </aside>
 
-        <main class="flex-grow overflow-hidden h-full">
-             <div id="chart-container" class="w-full h-full">
+        <main class="flex-grow overflow-hidden h-full bg-gray-800 rounded-l-lg"> <div id="chart-container" class="w-full h-full">
                 </div>
         </main>
     </div>

@@ -4,6 +4,9 @@
 window.addEventListener('load', () => {
     const chartContainer = document.getElementById('chart-container');
     const timeframeSelect = document.getElementById('timeframe-select'); // Получаем элемент select
+    const generalSummaryDiv = document.getElementById('analysis-summary-general'); // Блок для общей сводки
+    const detailedSummaryDiv = document.getElementById('analysis-summary-detailed'); // Блок для подробной сводки
+
 
     if (!chartContainer) {
         console.error('Контейнер для графика не найден!');
@@ -95,7 +98,7 @@ window.addEventListener('load', () => {
             return data;
         } catch (error) {
             console.error('fetchChartData: Ошибка при получении данных графика:', error); // Логируем ошибку fetch
-            return { ohlcv: [], markers: [], trendLines: [] }; // Возвращаем пустой массив для trendLines по умолчанию
+            return { ohlcv: [], markers: [], trendLines: [], analysisSummary: {"general": [], "detailed": []} }; // Возвращаем пустые данные и сводку
         }
     }
 
@@ -172,6 +175,60 @@ window.addEventListener('load', () => {
         }));
     }
 
+    // Функция для отображения сводки анализа
+    function displayAnalysisSummary(summaryData) {
+        if (!generalSummaryDiv || !detailedSummaryDiv) {
+            console.error('Контейнеры для сводки анализа не найдены.');
+            return;
+        }
+
+        // Очищаем предыдущую информацию
+        generalSummaryDiv.querySelector('ul').innerHTML = '';
+        detailedSummaryDiv.querySelector('ul').innerHTML = '';
+
+        // Заполняем общую информацию
+        if (summaryData && summaryData.general && summaryData.general.length > 0) {
+            summaryData.general.forEach(item => {
+                const listItem = document.createElement('li');
+                listItem.classList.add('flex', 'items-center', 'mb-1');
+                const statusIcon = document.createElement('span');
+                statusIcon.classList.add('mr-2', item.status ? 'text-green-500' : 'text-red-500');
+                statusIcon.textContent = item.status ? '✓' : '✗';
+                const description = document.createElement('span');
+                description.textContent = item.description;
+
+                listItem.appendChild(statusIcon);
+                listItem.appendChild(description);
+                generalSummaryDiv.querySelector('ul').appendChild(listItem);
+            });
+        } else {
+             const listItem = document.createElement('li');
+             listItem.textContent = 'Нет данных общей сводки.';
+             generalSummaryDiv.querySelector('ul').appendChild(listItem);
+        }
+
+        // Заполняем подробную информацию
+         if (summaryData && summaryData.detailed && summaryData.detailed.length > 0) {
+            summaryData.detailed.forEach(item => {
+                const listItem = document.createElement('li');
+                listItem.classList.add('flex', 'items-center', 'mb-1');
+                const statusIcon = document.createElement('span');
+                statusIcon.classList.add('mr-2', item.status ? 'text-green-500' : 'text-red-500');
+                statusIcon.textContent = item.status ? '✓' : '✗';
+                const description = document.createElement('span');
+                description.textContent = item.description;
+
+                listItem.appendChild(statusIcon);
+                listItem.appendChild(description);
+                detailedSummaryDiv.querySelector('ul').appendChild(listItem);
+            });
+        } else {
+             const listItem = document.createElement('li');
+             listItem.textContent = 'Нет данных подробной сводки.';
+             detailedSummaryDiv.querySelector('ul').appendChild(listItem);
+        }
+    }
+
 
     // Функция для загрузки и отображения данных графика
     async function loadChartData(timeframe) {
@@ -196,6 +253,8 @@ window.addEventListener('load', () => {
                  console.log('loadChartData: Данные свечей установлены.'); // Логируем установку данных
              } else {
                  console.error('loadChartData: candlestickSeries недействителен или не имеет метода setData.');
+                 // Пытаемся отобразить сводку анализа, даже если график не загрузился
+                 displayAnalysisSummary(chartData.analysisSummary);
                  return; // Выходим, если не можем установить данные
              }
 
@@ -241,9 +300,9 @@ window.addEventListener('load', () => {
                 const formattedTrendLines = formatTrendLineData(chartData.trendLines);
 
                 // Явная проверка, что chart.addLineSeries является функцией перед использованием
-                if (chart && typeof chart.addSeries === 'function') {
+                if (chart && typeof chart.addLineSeries === 'function') {
                     formattedTrendLines.forEach(lineData => {
-                        const lineSeries = chart.addSeries({
+                        const lineSeries = chart.addLineSeries({
                             color: lineData.color,
                             lineWidth: lineData.lineWidth,
                             lineStyle: lineData.lineStyle, // Теперь используем числовое значение
@@ -262,6 +321,10 @@ window.addEventListener('load', () => {
             } else {
                 console.log('loadChartData: Нет данных для линий тренда.');
             }
+
+            // Отображаем сводку анализа
+            displayAnalysisSummary(chartData.analysisSummary);
+            console.log('loadChartData: Сводка анализа отображена.');
 
 
             chart.timeScale().fitContent();
@@ -292,6 +355,10 @@ window.addEventListener('load', () => {
              });
              trendLineSeries = [];
              console.log('loadChartData: Серии линий тренда очищены.');
+
+             // Отображаем сводку анализа (даже если данных графика нет)
+             displayAnalysisSummary(chartData ? chartData.analysisSummary : null);
+             console.log('loadChartData: Сводка анализа отображена (нет данных графика).');
         }
          console.log(`loadChartData: Завершение загрузки данных для таймфрейма: ${timeframe}`); // Логируем завершение
     }
