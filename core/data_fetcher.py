@@ -27,7 +27,7 @@ def get_forex_data(symbol: str, interval: str, outputsize: int, api_key: str = s
     }
     url = f"{settings.BASE_URL_TWELVE_DATA}/time_series"
     
-    print(f"data_fetcher: Запрос данных для {symbol}, интервал {interval}, {outputsize} свечей...")
+    # print(f"data_fetcher: Запрос данных для {symbol}, интервал {interval}, {outputsize} свечей...")
     try:
         response = requests.get(url, params=params)
         response.raise_for_status()  # Вызовет исключение для HTTP ошибок (4xx или 5xx)
@@ -58,7 +58,7 @@ def get_forex_data(symbol: str, interval: str, outputsize: int, api_key: str = s
                 print(f"data_fetcher: DataFrame для {symbol} пуст после обработки (возможно, все данные были NaN).")
                 return pd.DataFrame()
 
-            print(f"data_fetcher: Данные для {symbol} успешно получены. Свечей: {len(df)}")
+            # print(f"data_fetcher: Данные для {symbol} успешно получены. Свечей: {len(df)}")
             return df
         elif "message" in data:
             print(f"data_fetcher: Ошибка API Twelve Data для {symbol}: {data['message']} (Код: {data.get('code')})")
@@ -101,4 +101,3 @@ if __name__ == '__main__':
             df_test.info()
         else:
             print(f"\nНе удалось получить тестовые данные для {test_symbol}.")
-
