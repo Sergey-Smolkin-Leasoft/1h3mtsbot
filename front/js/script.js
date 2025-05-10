@@ -4,6 +4,7 @@
 window.addEventListener('load', () => {
     const chartContainer = document.getElementById('chart-container');
     const timeframeSelect = document.getElementById('timeframe-select'); // Получаем элемент select
+    const backtestDateInput = document.getElementById('backtest-date'); // Получаем элемент выбора даты
     const generalSummaryDiv = document.getElementById('analysis-summary-general'); // Блок для общей сводки
     const detailedSummaryDiv = document.getElementById('analysis-summary-detailed'); // Блок для подробной сводки
 
@@ -82,11 +83,16 @@ window.addEventListener('load', () => {
         return;
     }
 
-    // Функция для получения данных с бэкенда с учетом таймфрейма
-    async function fetchChartData(timeframe) {
+    // Функция для получения данных с бэкенда с учетом таймфрейма и даты бэктеста
+    async function fetchChartData(timeframe, backtestDate = null) {
         try {
-            // Добавляем параметр timeframe в URL запроса
-            const url = `/api/chart_data?interval=${timeframe}`;
+            // Добавляем параметры timeframe и backtestDate в URL запроса
+            let url = `/api/chart_data?interval=${timeframe}`;
+            if (backtestDate) {
+                // backtestDate должен быть в формате YYYY-MM-DD
+                url += `&endDate=${backtestDate}`;
+            }
+
             console.log(`fetchChartData: Запрос к URL: ${url}`); // Логируем URL запроса
             const response = await fetch(url);
             if (!response.ok) {
@@ -120,15 +126,9 @@ window.addEventListener('load', () => {
 
     // Функция для форматирования данных маркеров для Lightweight Charts
     function formatMarkerData(data) {
-         // Улучшенная карта маркеров для точек структуры
+         // Обновленная карта маркеров: удалены HH, HL, LH, LL
          const markerMap = {
-             // Точки тренда (HH, HL, LH, LL) - делаем их более заметными
-             'HH': { shape: 'arrowUp', color: '#2962FF', position: 'aboveBar', size: 1.5 }, // HH - Синяя стрелка вверх, больше размер
-             'HL': { shape: 'circle', color: '#26A69A', position: 'belowBar', size: 1.2 },   // HL - Зеленый круг, средний размер
-             'LH': { shape: 'arrowDown', color: '#FF0000', position: 'belowBar', size: 1.5 }, // LH - Красная стрелка вниз, больше размер
-             'LL': { shape: 'circle', color: '#FF0000', position: 'aboveBar', size: 1.2 },   // LL - Красный круг, средний размер
-
-             // Простые максимумы/минимумы (H, L) - менее заметные
+             // Простые максимумы/минимумы (H, L)
              'H': { shape: 'square', color: '#808080', position: 'aboveBar', size: 1 },    // H - Серый квадрат, стандартный размер
              'L': { shape: 'square', color: '#808080', position: 'belowBar', size: 1 },    // L - Серый квадрат, стандартный размер
 
@@ -144,8 +144,11 @@ window.addEventListener('load', () => {
              'UNKNOWN_SETUP': { shape: 'circle', color: '#808080', position: 'aboveBar' } // Серый
          };
 
-         return data.map(item => {
-             const markerType = markerMap[item.type] || { shape: 'circle', color: '#808080', position: 'aboveBar' }; // Дефолтный маркер
+         // Фильтруем точки, оставляя только те типы, которые есть в markerMap
+         const filteredData = data.filter(item => markerMap.hasOwnProperty(item.type));
+
+         return filteredData.map(item => {
+             const markerType = markerMap[item.type]; // Теперь маркер всегда будет найден
              return {
                  time: new Date(item.time).getTime() / 1000, // Преобразуем в timestamp в секундах
                  position: markerType.position,
@@ -231,9 +234,9 @@ window.addEventListener('load', () => {
 
 
     // Функция для загрузки и отображения данных графика
-    async function loadChartData(timeframe) {
-        console.log(`loadChartData: Начало загрузки данных для таймфрейма: ${timeframe}`); // Логируем начало
-        const chartData = await fetchChartData(timeframe);
+    async function loadChartData(timeframe, backtestDate = null) {
+        console.log(`loadChartData: Начало загрузки данных для таймфрейма: ${timeframe} до даты: ${backtestDate || 'последняя доступная'}`); // Логируем начало
+        const chartData = await fetchChartData(timeframe, backtestDate);
         console.log('loadChartData: Данные получены из fetchChartData:', chartData); // Логируем данные после fetch
 
         // Очищаем старые серии линий тренда перед добавлением новых
@@ -253,7 +256,7 @@ window.addEventListener('load', () => {
                  console.log('loadChartData: Данные свечей установлены.'); // Логируем установку данных
              } else {
                  console.error('loadChartData: candlestickSeries недействителен или не имеет метода setData.');
-                 // Пытаемся отобразить сводку анализа, даже если график не загрузился
+                 // Пытаемся отобразить свотку анализа, даже если график не загрузился
                  displayAnalysisSummary(chartData.analysisSummary);
                  return; // Выходим, если не можем установить данные
              }
@@ -365,14 +368,24 @@ window.addEventListener('load', () => {
 
     // Обработчик изменения выбора таймфрейма
     if (timeframeSelect) {
-        timeframeSelect.addEventListener('change', (event) => {
-            const selectedTimeframe = event.target.value;
-            loadChartData(selectedTimeframe); // Загружаем данные для нового таймфрейма
+        timeframeSelect.addEventListener('change', () => {
+            const selectedTimeframe = timeframeSelect.value;
+            const selectedDate = backtestDateInput.value; // Получаем выбранную дату
+            loadChartData(selectedTimeframe, selectedDate); // Загружаем данные с учетом даты
+        });
+    }
+
+    // Обработчик изменения выбора даты
+    if (backtestDateInput) {
+        backtestDateInput.addEventListener('change', () => {
+            const selectedTimeframe = timeframeSelect.value;
+            const selectedDate = backtestDateInput.value; // Получаем выбранную дату
+            loadChartData(selectedTimeframe, selectedDate); // Загружаем данные с учетом даты
         });
     }
 
 
-    // Инициализация: загружаем данные для таймфрейма по умолчанию (1h)
+    // Инициализация: загружаем данные для таймфрейма по умолчанию (1h) и без даты бэктеста изначально
     const defaultTimeframe = timeframeSelect ? timeframeSelect.value : '1h';
     loadChartData(defaultTimeframe);
 
