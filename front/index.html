@@ -6,16 +6,38 @@
     <title>Торговый график</title>
     <script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="stylesheet" href="./styles.css">
+    <link rel="stylesheet" href="/css/styles.css">
 </head>
-<body class="bg-gray-100 text-gray-800 flex flex-col items-center justify-center min-h-screen p-4">
+<body class="bg-white text-black flex items-center justify-center min-h-screen p-4">
+    <div class="app-window bg-gray-800 rounded-lg shadow-xl overflow-hidden flex">
+        <aside class="w-64 p-4 flex flex-col flex-shrink-0">
+            <h2 class="text-xl font-bold mb-4 text-white">Настройки</h2>
 
-    <h1 class="text-2xl font-bold mb-6">График цены и структуры</h1>
+            <div class="mb-6">
+                <label for="timeframe-select" class="block text-gray-300 mb-2">Таймфрейм:</label>
+                <select id="timeframe-select" class="w-full bg-gray-700 text-white rounded px-3 py-1 cursor-pointer focus:outline-none focus:ring focus:border-blue-300">
+                    <option value="1m">1m</option>
+                    <option value="3m">3m</option>
+                    <option value="5m">5m</option>
+                    <option value="15m">15m</option>
+                    <option value="30m">30m</option>
+                    <option value="1h" selected>1h</option>
+                    <option value="2h">2h</option>
+                    <option value="4h">4h</option>
+                    <option value="1d">1d</option>
+                </select>
+            </div>
 
-    <div id="chart-container" class="w-full max-w-4xl h-96 bg-white rounded-lg shadow-xl overflow-hidden">
-        </div>
+            </aside>
 
-    <script src="./script.js"></script>
+        <main class="flex-grow overflow-hidden h-full">
+             <div id="chart-container" class="w-full h-full">
+                </div>
+        </main>
+    </div>
+
+
+    <script src="/js/script.js"></script>
 
 </body>
 </html>
