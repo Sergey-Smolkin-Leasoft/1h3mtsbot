@@ -1,7 +1,7 @@
 # ts_logic/context_analyzer_1h.py
 import pandas as pd
 from configs import settings # Для доступа к SWING_POINT_N
-from datetime import time, timedelta # Импортируем для анализа сессий
+from datetime import time, timedelta, datetime as dt_datetime # Импортируем для анализа сессий и времени
 
 # Соответствие стилей линий числовым значениям Lightweight Charts
 LINE_STYLE_SOLID = 0
@@ -404,83 +404,218 @@ def summarize_analysis(market_data_df: pd.DataFrame, structure_points: list, ses
     Собирает сводку ключевой информации анализа для отображения на фронтенде.
 
     Args:
-        market_data_df (pd.DataFrame): DataFrame с данными OHLC.
-        structure_points (list): Список точек структуры.
+        market_data_df (pd.DataFrame): DataFrame с данными OHLC (уже отфильтрованный по дате бэктеста).
+        structure_points (list): Список точек структуры (HH, HL, LH, LL, H, L).
         session_fractal_and_setup_points (list): Список сессионных фракталов и сетапов.
         overall_context (str): Общий рыночный контекст.
 
     Returns:
-        dict: Словарь с разделами "general" и "detailed", содержащими списки пунктов анализа.
-              Каждый пункт: {'description': str, 'status': bool}
+        dict: Словарь с разделами для сводки анализа.
+              Каждый пункт: {'description': str, 'status': bool, 'section': str}
     """
-    analysis_summary = {
-        "general": [],
-        "detailed": []
-    }
+    analysis_points = []
 
     # --- Общая информация ---
-    analysis_summary["general"].append({
+    analysis_points.append({
         'description': f"Общий контекст: {overall_context}",
-        'status': True # Контекст всегда определен (даже как нейтральный)
+        'status': True, # Контекст всегда определен (даже как нейтральный)
+        'section': 'Общая информация'
     })
+
+    # Пример: Маркет структура какая (более явно)
+    # Можно детализировать последнюю последовательность трендовых точек
+    trend_defining_points = [p for p in structure_points if p['type'] in ['HH', 'HL', 'LH', 'LL']]
+    if len(trend_defining_points) >= 2:
+        last_two_types = f"{trend_defining_points[-2]['type']} -> {trend_defining_points[-1]['type']}"
+        analysis_points.append({
+            'description': f"Структура: {last_two_types}",
+            'status': True,
+            'section': 'Общая информация'
+        })
+    elif len(trend_defining_points) == 1:
+         analysis_points.append({
+            'description': f"Структура: {trend_defining_points[0]['type']} (начало)",
+            'status': True,
+            'section': 'Общая информация'
+        })
+    else:
+         analysis_points.append({
+            'description': "Структура: Недостаточно трендовых точек",
+            'status': False,
+            'section': 'Общая информация'
+        })
+
 
     # Пример: Наличие точек входа (сетапов)
     setup_points = [p for p in session_fractal_and_setup_points if 'SETUP' in p.get('type', '')]
-    analysis_summary["general"].append({
+    analysis_points.append({
         'description': f"Найдено сетапов: {len(setup_points)}",
-        'status': len(setup_points) > 0
+        'status': len(setup_points) > 0,
+        'section': 'Общая информация'
     })
 
     # Пример: Цели (здесь нужна ваша логика определения целей)
     # Пока заглушка
     has_targets = False # Ваша логика определения целей
-    analysis_summary["general"].append({
+    analysis_points.append({
         'description': "Цели определены",
-        'status': has_targets
+        'status': has_targets,
+        'section': 'Общая информация'
     })
 
     # Пример: Точка инвалидации (здесь нужна ваша логика определения точки инвалидации)
     # Пока заглушка
     has_invalidation = False # Ваша логика определения точки инвалидации
-    analysis_summary["general"].append({
+    analysis_points.append({
         'description': "Точка инвалидации определена",
-        'status': has_invalidation
+        'status': has_invalidation,
+        'section': 'Общая информация'
     })
 
 
     # --- Подробная информация ---
 
-    # Пример: Снятие PDH/PDL (нужна более точная логика, пока заглушка)
-    # Для этого нужен доступ к данным предыдущего дня
-    pdh_swept = False # Ваша логика проверки снятия PDH
-    pdl_swept = False # Ваша логика проверки снятия PDL
+    # Если лонг: был ли свип PDH либо другого биг пула
+    # Если шорт: был ли свип PDL либо другого биг пула
+    # Нужен доступ к данным предыдущего дня и логика определения "биг пулов"
+    swiped_liquidity = "Не проверено" # Ваша логика проверки свипа ликвидности
+    swiped_status = False # Статус свипа
+    if "LONG" in overall_context:
+         swiped_liquidity = "Свип PDH / Биг пула вверх"
+         swiped_status = False # Ваша логика проверки свипа PDH/биг пула вверх
+    elif "SHORT" in overall_context:
+         swiped_liquidity = "Свип PDL / Биг пула вниз"
+         swiped_status = False # Ваша логика проверки свипа PDL/биг пула вниз
+    else:
+         swiped_liquidity = "Свип ликвидности (нейтральный контекст)"
+         swiped_status = False # Ваша логика проверки свипа ликвидности в рендже
 
-    analysis_summary["detailed"].append({
-        'description': f"Снятие PDH: {'Да' if pdh_swept else 'Нет'}",
-        'status': pdh_swept
-    })
-    analysis_summary["detailed"].append({
-        'description': f"Снятие PDL: {'Да' if pdl_swept else 'Нет'}",
-        'status': pdl_swept
-    })
-
-    # Пример: Направление Азии и синхронизация (нужна логика)
-    # Для этого нужен доступ к данным азиатской сессии и текущему движению
-    asian_direction = "Не определено" # Ваша логика определения направления Азии
-    is_synchronized = False # Ваша логика проверки синхронизации
-
-    analysis_summary["detailed"].append({
-        'description': f"Направление Азии: {asian_direction}",
-        'status': asian_direction != "Не определено" # Считаем успешным, если направление определено
-    })
-    analysis_summary["detailed"].append({
-        'description': f"Синхронизация с Азией: {'Да' if is_synchronized else 'Нет'}",
-        'status': is_synchronized
+    analysis_points.append({
+        'description': swiped_liquidity,
+        'status': swiped_status,
+        'section': 'Подробная информация'
     })
 
-    # Добавьте сюда другие пункты подробного анализа по вашей торговой системе
+    # Ордер флоу работа (снятия + тесты блоков)
+    # Нужна логика анализа ордер флоу
+    order_flow_status = False # Ваша логика анализа ордер флоу
+    analysis_points.append({
+        'description': "Ордер флоу работа",
+        'status': order_flow_status,
+        'section': 'Подробная информация'
+    })
 
-    return analysis_summary
+    # Азия синхронна с текущим трендом? глобал лонг - азия лонг или шорт?
+    # Нужна логика определения направления Азии и сравнения с глобальным контекстом
+    asia_sync_status = False # Ваша логика проверки синхронизации Азии
+    asia_direction_desc = "Не определено" # Ваша логика определения направления Азии
+    analysis_points.append({
+        'description': f"Азия синхронна ({asia_direction_desc})",
+        'status': asia_sync_status,
+        'section': 'Подробная информация'
+    })
+
+    # Нет ли ренжа на данный момент, или снятия по обе стороны
+    # Нужна логика определения ренджа и свипов с обеих сторон
+    is_ranging = False # Ваша логика определения ренджа
+    swept_both_sides = False # Ваша логика проверки свипов с обеих сторон
+    analysis_points.append({
+        'description': f"Рендж / Свип по обе стороны: {'Да' if is_ranging or swept_both_sides else 'Нет'}",
+        'status': not is_ranging and not swept_both_sides, # Считаем успешным, если нет ренджа или свипа по обе стороны
+        'section': 'Подробная информация'
+    })
+
+    # Был ли свип HTF уровня Азией против тренда?
+    # Нужна логика определения HTF уровней, свипов Азией и сравнения с трендом
+    htf_sweep_asia_against_trend = False # Ваша логика проверки свипа HTF Азией против тренда
+    analysis_points.append({
+        'description': "Свип HTF Азией против тренда",
+        'status': not htf_sweep_asia_against_trend, # Считаем успешным, если не было свипа против тренда
+        'section': 'Подробная информация'
+    })
+
+    # Во франк манипуляции проверить что лондон не снимал франк против контекста перед тем как дать сетап в контексте - иначе скип
+    # Нужна логика анализа сессий Франкфурта и Лондона и их взаимодействия
+    frankfurt_london_manipulation = False # Ваша логика проверки манипуляций
+    analysis_points.append({
+        'description': "Манипуляции Франкфурт/Лондон",
+        'status': not frankfurt_london_manipulation, # Считаем успешным, если нет манипуляций против контекста
+        'section': 'Подробная информация'
+    })
+
+    # --- Цели ---
+    # Цели на растоянии 250 пипсов для евро и 400 для герчика?
+    # Есть ли цели вообще (уже есть в общей информации, можно детализировать здесь)
+    # Есть ли допустимый РР от точки входа до последней цели
+    # Нужна логика определения целей и расчета RR
+    targets_exist = has_targets # Используем статус из общей информации
+    rr_acceptable = False # Ваша логика расчета и проверки RR
+    target_distance_met = False # Ваша логика проверки расстояния до целей
+
+    analysis_points.append({
+        'description': f"Цели определены: {'Да' if targets_exist else 'Нет'}",
+        'status': targets_exist,
+        'section': 'Цели'
+    })
+    analysis_points.append({
+        'description': "Расстояние до целей (250/400 пипсов)",
+        'status': target_distance_met, # Статус проверки расстояния
+        'section': 'Цели'
+    })
+    analysis_points.append({
+        'description': "Допустимый RR",
+        'status': rr_acceptable, # Статус проверки RR
+        'section': 'Цели'
+    })
+
+    # --- Точки набора ---
+    # Есть ли фракталы для работы (связано с сетапами)
+    has_entry_fractals = len(setup_points) > 0 # Если есть сетапы, считаем, что есть фракталы для работы
+    analysis_points.append({
+        'description': "Есть фракталы для работы (сетапы)",
+        'status': has_entry_fractals,
+        'section': 'Точки набора'
+    })
+
+    # Точка инвалидация: не было ли инвалидации идеи (закреп за фракталом)
+    # Нужна логика определения точки инвалидации и проверки закрепления цены
+    invalidation_breached = False # Ваша логика проверки закрепления за инвалидацией
+    analysis_points.append({
+        'description': "Идея не инвалидирована (нет закрепления)",
+        'status': not invalidation_breached, # Считаем успешным, если нет инвалидации
+        'section': 'Точки набора' # Или можно в отдельную секцию "Точка инвалидации"
+    })
+
+    # --- Другое ---
+    # Отт или нет
+    # Нужна логика определения OTT (Optimal Trade Entry)
+    is_ott = False # Ваша логика определения OTT
+    analysis_points.append({
+        'description': f"OTT: {'Да' if is_ott else 'Нет'}",
+        'status': is_ott, # Статус OTT
+        'section': 'Другое'
+    })
+
+    # Нет ли новостей
+    # Нужна логика проверки новостного календаря (требует внешних данных)
+    has_news = False # Ваша логика проверки новостей
+    analysis_points.append({
+        'description': "Нет важных новостей",
+        'status': not has_news, # Считаем успешным, если нет новостей
+        'section': 'Другое'
+    })
+
+
+    # Группируем пункты по секциям
+    grouped_summary = {}
+    for point in analysis_points:
+        section = point.pop('section') # Удаляем ключ 'section' и получаем его значение
+        if section not in grouped_summary:
+            grouped_summary[section] = []
+        grouped_summary[section].append(point)
+
+
+    return grouped_summary
 
 
 # Пример использования (для тестирования этого модуля)
@@ -510,12 +645,10 @@ if __name__ == '__main__':
 
     analysis_summary_up = summarize_analysis(test_df, structure_up, test_session_fractals, context_up)
     print("\nСводка анализа (Пример 1):")
-    print("Общая информация:")
-    for item in analysis_summary_up["general"]:
-        print(f"  - {item['description']} ({'✓' if item['status'] else '✗'})")
-    print("Подробная информация:")
-    for item in analysis_summary_up["detailed"]:
-         print(f"  - {item['description']} ({'✓' if item['status'] else '✗'})")
+    for section, items in analysis_summary_up.items():
+        print(f"--- {section} ---")
+        for item in items:
+             print(f"  - {item['description']} ({'✓' if item['status'] else '✗'})")
 
 
     # Пример данных структуры (консолидация)
@@ -534,9 +667,7 @@ if __name__ == '__main__':
 
     analysis_summary_range = summarize_analysis(test_df, structure_range, [], context_range) # Пустой список сетапов для примера
     print("\nСводка анализа (Пример 2):")
-    print("Общая информация:")
-    for item in analysis_summary_range["general"]:
-        print(f"  - {item['description']} ({'✓' if item['status'] else '✗'})")
-    print("Подробная информация:")
-    for item in analysis_summary_range["detailed"]:
-         print(f"  - {item['description']} ({'✓' if item['status'] else '✗'})")
+    for section, items in analysis_summary_range.items():
+        print(f"--- {section} ---")
+        for item in items:
+             print(f"  - {item['description']} ({'✓' if item['status'] else '✗'})")
