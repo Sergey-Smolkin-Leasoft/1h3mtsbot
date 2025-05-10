@@ -14,17 +14,17 @@ if PROJECT_ROOT not in sys.path:
 
 try:
     from configs import settings
-    from bot.core.data_fetcher import get_forex_data
-    from bot.strategy.context_analyzer_1h import (
+    from core.data_fetcher import get_forex_data
+    from ts_logic.context_analyzer_1h import (
         find_swing_points,
         analyze_market_structure_points,
         determine_overall_market_context # Убедитесь, что эта функция есть и импортируется
     )
-    from bot.utils.plotter import plot_market_structure
+    from utils.plotter import plot_market_structure
 except ImportError as e:
     print(f"Ошибка импорта: {e}")
     print("Убедитесь, что все файлы проекта находятся в правильных директориях,")
-    print("и что в каждой поддиректории (bot, bot/core, bot/strategy, bot/utils, configs) есть файл __init__.py.")
+    print("и что в каждой поддиректории (core, ts-logic, utils, configs) есть файл __init__.py.")
     print(f"Текущий PROJECT_ROOT, добавленный в sys.path: {PROJECT_ROOT}")
     sys.exit(1) # Выход, если базовые импорты не работают
 
