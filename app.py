@@ -32,6 +32,11 @@ INTERVAL_MAP_API = {
     "4h": "4h", "8h": "8h", "1d": "1day", "1w": "1week", "1M": "1month"
 }
 
+# Список таймфреймов, для которых будет выполняться полный анализ
+# (включая линии тренда, маркеры HH/HL, сессионные фракталы и сводку)
+ANALYSIS_ENABLED_TIMEFRAMES = ['1h', '4h'] 
+
+
 @app.route('/')
 def index():
     return render_template('index.html')
@@ -111,10 +116,19 @@ def get_chart_data():
         data_for_offset_calculation = market_data_df_filtered 
 
 
-    if interval_from_request == settings.CONTEXT_TIMEFRAME and not market_data_df_filtered.empty:
+    # Измененное условие: анализ выполняется, если текущий таймфрейм есть в списке ANALYSIS_ENABLED_TIMEFRAMES
+    if interval_from_request in ANALYSIS_ENABLED_TIMEFRAMES and not market_data_df_filtered.empty:
         try:
             current_processing_datetime = market_data_df_filtered.index[-1].to_pydatetime()
-            swing_highs, swing_lows = find_swing_points(market_data_df_filtered, n=settings.SWING_POINT_N)
+            
+            # Параметр N для свингов может быть разным для разных таймфреймов.
+            # Пока используем один и тот же из settings.SWING_POINT_N.
+            # Для более тонкой настройки можно добавить логику выбора N в зависимости от interval_from_request.
+            swing_n_for_current_tf = settings.SWING_POINT_N 
+            # Аналогично для SESSION_FRACTAL_N, если он будет использоваться на разных ТФ для сессий.
+            # settings.SESSION_FRACTAL_N в fractal_analyzer.py используется напрямую.
+
+            swing_highs, swing_lows = find_swing_points(market_data_df_filtered, n=swing_n_for_current_tf)
             structure_points = analyze_market_structure_points(swing_highs, swing_lows)
             overall_context = determine_overall_market_context(structure_points)
             # print(f"API: Общий рыночный контекст (из HH/HL): {overall_context} для {interval_from_request}")
@@ -123,6 +137,7 @@ def get_chart_data():
             if structure_points: 
                 all_points_for_plot.extend(structure_points)
             
+            # Сессионный анализ может быть менее релевантен для старших ТФ, но код его выполнит.
             session_fractal_and_setup_points = analyze_fractal_setups(market_data_df_filtered, current_processing_datetime)
             if session_fractal_and_setup_points:
                 all_points_for_plot.extend(session_fractal_and_setup_points)
@@ -146,17 +161,20 @@ def get_chart_data():
                 })
 
             if last_df_timestamp_for_trendlines and data_for_offset_calculation is not None and not data_for_offset_calculation.empty: 
-                 # print(f"API: Вызов determine_trend_lines_v2 с last_df_timestamp: {last_df_timestamp_for_trendlines}")
+                 points_window = settings.TRENDLINE_POINTS_WINDOW_SIZE if hasattr(settings, 'TRENDLINE_POINTS_WINDOW_SIZE') else 5
+                 # Можно добавить адаптацию points_window для разных ТФ, если нужно
+                 # if interval_from_request == '4h': points_window = 3 # Например
+                 
                  trend_lines_data = determine_trend_lines_v2(
                      swing_highs, 
                      swing_lows, 
                      last_df_timestamp_for_trendlines, 
                      data_for_offset_calculation,
-                     points_window_size=settings.TRENDLINE_POINTS_WINDOW_SIZE if hasattr(settings, 'TRENDLINE_POINTS_WINDOW_SIZE') else 5 # Используем настройку или значение по умолчанию
+                     points_window_size=points_window
                  )
-                 # print(f"API: determine_trend_lines_v2 вернула {len(trend_lines_data)} линий.")
+                 # print(f"API: determine_trend_lines_v2 вернула {len(trend_lines_data)} линий для ТФ {interval_from_request}.")
             # else:
-                # print("API: last_df_timestamp_for_trendlines или data_for_offset_calculation не определены, линии тренда не будут рассчитаны.")
+                # print(f"API: last_df_timestamp_for_trendlines или data_for_offset_calculation не определены, линии тренда не будут рассчитаны для ТФ {interval_from_request}.")
 
             analysis_summary_data = summarize_analysis(
                 market_data_df_filtered,
@@ -170,12 +188,12 @@ def get_chart_data():
             print(traceback.format_exc())
             analysis_summary_data["Общая информация"].append({'description': f"Ошибка при анализе ТФ {interval_from_request}.", 'status': False})
     else:
-        default_text = f"Анализ (структура, сетапы, линии, сводка) доступен только для ТФ {settings.CONTEXT_TIMEFRAME}."
-        if interval_from_request != settings.CONTEXT_TIMEFRAME:
+        default_text = f"Полный анализ (линии, структура HH/HL, сессии, сводка) доступен для ТФ: {', '.join(ANALYSIS_ENABLED_TIMEFRAMES)}."
+        if interval_from_request not in ANALYSIS_ENABLED_TIMEFRAMES:
              analysis_summary_data["Общая информация"].append({'description': default_text, 'status': False})
         elif market_data_df_filtered.empty:
              analysis_summary_data["Общая информация"].append({'description': "Нет данных для анализа.", 'status': False})
-        # print(f"API: Анализ (структура, сетапы, линии, сводка) пропущен для таймфрейма {interval_from_request}.")
+        # print(f"API: Полный анализ пропущен для таймфрейма {interval_from_request}.")
 
     # print(f"API: Подготовлено {len(ohlcv_data)} свечей, {len(marker_data)} маркеров и {len(trend_lines_data)} линий тренда для ТФ {interval_from_request} (до {end_date_str or 'последняя дата'}).")
 
