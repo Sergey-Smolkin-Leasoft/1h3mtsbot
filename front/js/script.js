@@ -279,9 +279,9 @@ window.addEventListener('load', () => {
             if (chartData.trendLines && chartData.trendLines.length > 0) {
                 console.log(`loadChartData: Получено ${chartData.trendLines.length} линий тренда.`);
                 const formattedTrendLines = formatTrendLineData(chartData.trendLines);
-                if (chart && typeof chart.addLineSeries === 'function') {
+               
                     formattedTrendLines.forEach(lineData => {
-                        const lineSeries = chart.addLineSeries({
+                        const lineSeries = chart.addSeries(LightweightCharts.LineSeries, {
                             color: lineData.color,
                             lineWidth: lineData.lineWidth,
                             lineStyle: lineData.lineStyle,
@@ -293,11 +293,6 @@ window.addEventListener('load', () => {
                         trendLineSeries.push(lineSeries);
                     });
                     console.log('loadChartData: Серии линий тренда добавлены.');
-                } else {
-                    console.error('loadChartData: chart.addLineSeries не является функцией. Невозможно добавить линии тренда.');
-                }
-            } else {
-                console.log('loadChartData: Нет данных для линий тренда.');
             }
 
             displayAnalysisSummary(chartData.analysisSummary);

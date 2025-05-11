@@ -282,66 +282,100 @@ def determine_overall_market_context(structure_points: list):
 def determine_trend_lines(structure_points: list, context: str):
     """
     Определяет координаты линий тренда на основе точек структуры и контекста.
+    Возвращает список словарей, где каждый словарь описывает одну линию.
     """
     trend_lines = []
+    # Фильтруем точки, определяющие тренд (HH, HL, LH, LL)
     trend_defining_points = [p for p in structure_points if p['type'] in ['HH', 'HL', 'LH', 'LL']]
 
-    if len(trend_defining_points) < 2: return trend_lines
+    # Нужно как минимум 2 точки для построения линии
+    if len(trend_defining_points) < 2:
+        return trend_lines
 
     if "LONG" in context:
+        # Линия поддержки по HL (повышающиеся минимумы)
         hl_points = [p for p in trend_defining_points if p['type'] == 'HL']
         if len(hl_points) >= 2:
-            points_to_connect = sorted(hl_points[-2:], key=lambda x: x['time'])
-            if len(points_to_connect) >= 2:
-                 trend_lines.append({
-                    'start_time': points_to_connect[0]['time'], 'start_price': points_to_connect[0]['price'],
-                    'end_time': points_to_connect[-1]['time'], 'end_price': points_to_connect[-1]['price'],
-                    'color': '#26A69A', 'lineStyle': LINE_STYLE_SOLID })
+            # Сортируем по времени и берем две последние точки HL для построения линии
+            points_to_connect_hl = sorted(hl_points, key=lambda x: x['time'])[-2:]
+            trend_lines.append({
+                'start_time': points_to_connect_hl[0]['time'], 'start_price': points_to_connect_hl[0]['price'],
+                'end_time': points_to_connect_hl[-1]['time'], 'end_price': points_to_connect_hl[-1]['price'],
+                'color': '#26A69A',  # Зеленовато-голубой для основной линии поддержки восходящего тренда
+                'lineStyle': LINE_STYLE_SOLID
+            })
+        
+        # Линия сопротивления по HH (повышающиеся максимумы) - верхняя граница канала
         hh_points = [p for p in trend_defining_points if p['type'] == 'HH']
         if len(hh_points) >= 2:
-             points_to_connect_hh = sorted(hh_points[-2:], key=lambda x: x['time'])
-             if len(points_to_connect_hh) >= 2:
-                  trend_lines.append({
-                     'start_time': points_to_connect_hh[0]['time'], 'start_price': points_to_connect_hh[0]['price'],
-                     'end_time': points_to_connect_hh[-1]['time'], 'end_price': points_to_connect_hh[-1]['price'],
-                     'color': '#2962FF', 'lineStyle': LINE_STYLE_SOLID })
+            # Сортируем по времени и берем две последние точки HH
+            points_to_connect_hh = sorted(hh_points, key=lambda x: x['time'])[-2:]
+            trend_lines.append({
+                'start_time': points_to_connect_hh[0]['time'], 'start_price': points_to_connect_hh[0]['price'],
+                'end_time': points_to_connect_hh[-1]['time'], 'end_price': points_to_connect_hh[-1]['price'],
+                'color': '#2962FF',  # Синий для верхней линии канала восходящего тренда
+                'lineStyle': LINE_STYLE_SOLID
+            })
+
     elif "SHORT" in context:
+        # Линия сопротивления по LH (понижающиеся максимумы)
         lh_points = [p for p in trend_defining_points if p['type'] == 'LH']
         if len(lh_points) >= 2:
-            points_to_connect = sorted(lh_points[-2:], key=lambda x: x['time'])
-            if len(points_to_connect) >= 2:
-                 trend_lines.append({
-                    'start_time': points_to_connect[0]['time'], 'start_price': points_to_connect[0]['price'],
-                    'end_time': points_to_connect[-1]['time'], 'end_price': points_to_connect[-1]['price'],
-                    'color': '#EF5350', 'lineStyle': LINE_STYLE_SOLID })
+            # Сортируем по времени и берем две последние точки LH
+            points_to_connect_lh = sorted(lh_points, key=lambda x: x['time'])[-2:]
+            trend_lines.append({
+                'start_time': points_to_connect_lh[0]['time'], 'start_price': points_to_connect_lh[0]['price'],
+                'end_time': points_to_connect_lh[-1]['time'], 'end_price': points_to_connect_lh[-1]['price'],
+                'color': '#EF5350',  # Красный для основной линии сопротивления нисходящего тренда
+                'lineStyle': LINE_STYLE_SOLID
+            })
+
+        # Линия поддержки по LL (понижающиеся минимумы) - нижняя граница канала
         ll_points = [p for p in trend_defining_points if p['type'] == 'LL']
         if len(ll_points) >= 2:
-             points_to_connect_ll = sorted(ll_points[-2:], key=lambda x: x['time'])
-             if len(points_to_connect_ll) >= 2:
-                  trend_lines.append({
-                     'start_time': points_to_connect_ll[0]['time'], 'start_price': points_to_connect_ll[0]['price'],
-                     'end_time': points_to_connect_ll[-1]['time'], 'end_price': points_to_connect_ll[-1]['price'],
-                     'color': '#26A69A', 'lineStyle': LINE_STYLE_SOLID })
+            # Сортируем по времени и берем две последние точки LL
+            points_to_connect_ll = sorted(ll_points, key=lambda x: x['time'])[-2:]
+            trend_lines.append({
+                'start_time': points_to_connect_ll[0]['time'], 'start_price': points_to_connect_ll[0]['price'],
+                'end_time': points_to_connect_ll[-1]['time'], 'end_price': points_to_connect_ll[-1]['price'],
+                'color': '#FFB300',  # Оранжевый для нижней линии канала нисходящего тренда (ИЗМЕНЕНО)
+                'lineStyle': LINE_STYLE_SOLID
+            })
+            
     elif "NEUTRAL" in context or "RANGING" in context:
-        # Используем все точки структуры для определения границ диапазона, если трендовых мало
+        # Для бокового движения можно рисовать горизонтальные линии по последним значимым H и L
+        # Используем все точки структуры (включая H, L), если трендовых мало
         points_for_range = trend_defining_points if len(trend_defining_points) >=2 else structure_points
-        if len(points_for_range) >=1: # Нужно хотя бы одна точка для отрисовки горизонтальной линии
+        
+        if len(points_for_range) >=1: 
             last_relevant_high = next((p for p in reversed(points_for_range) if 'H' in p['type']), None)
             last_relevant_low = next((p for p in reversed(points_for_range) if 'L' in p['type']), None)
 
-            first_point_time = points_for_range[0]['time']
-            last_point_time = points_for_range[-1]['time']
+            # Для горизонтальных линий нам нужна начальная и конечная временная точка видимого диапазона
+            # Проще всего взять время первой и последней точки из points_for_range
+            # Или, если есть данные о всем DataFrame, то его начало и конец.
+            # Пока используем время первой и последней точки из points_for_range.
+            
+            # Чтобы линии были видны на текущем срезе данных, лучше использовать
+            # первую и последнюю временную метку из *всего* отображаемого DataFrame,
+            # а не только из structure_points. Но для этого сюда нужно передать df.index.min() и df.index.max()
+            # или рассчитывать это в app.py.
+            # Текущая реализация возьмет время первой и последней точки из points_for_range.
+            
+            if points_for_range: # Убедимся, что список не пуст
+                first_point_time = points_for_range[0]['time']
+                last_point_time = points_for_range[-1]['time']
 
-            if last_relevant_high:
-                 trend_lines.append({
-                    'start_time': first_point_time, 'start_price': last_relevant_high['price'],
-                    'end_time': last_point_time, 'end_price': last_relevant_high['price'],
-                    'color': '#808080', 'lineStyle': LINE_STYLE_DOTTED })
-            if last_relevant_low:
-                 trend_lines.append({
-                    'start_time': first_point_time, 'start_price': last_relevant_low['price'],
-                    'end_time': last_point_time, 'end_price': last_relevant_low['price'],
-                    'color': '#808080', 'lineStyle': LINE_STYLE_DOTTED })
+                if last_relevant_high:
+                     trend_lines.append({
+                        'start_time': first_point_time, 'start_price': last_relevant_high['price'],
+                        'end_time': last_point_time, 'end_price': last_relevant_high['price'], # Цена та же для горизонтальной линии
+                        'color': '#808080', 'lineStyle': LINE_STYLE_DOTTED })
+                if last_relevant_low:
+                     trend_lines.append({
+                        'start_time': first_point_time, 'start_price': last_relevant_low['price'],
+                        'end_time': last_point_time, 'end_price': last_relevant_low['price'], # Цена та же
+                        'color': '#808080', 'lineStyle': LINE_STYLE_DOTTED })
     return trend_lines
 
 def summarize_analysis(market_data_df: pd.DataFrame, structure_points: list, session_fractal_and_setup_points: list, overall_context: str):
