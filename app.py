@@ -100,7 +100,7 @@ def get_chart_data():
     analysis_summary_data = empty_summary.copy()
 
     last_df_timestamp_for_trendlines = None
-    price_series_for_offset_calc = None # Инициализация
+    data_for_offset_calculation = None 
 
     if not market_data_df_filtered.empty:
         last_df_timestamp_for_trendlines = market_data_df_filtered.index[-1]
@@ -108,9 +108,7 @@ def get_chart_data():
             # print(f"API: Внимание! last_df_timestamp_for_trendlines не является pd.Timestamp: {type(last_df_timestamp_for_trendlines)}")
             last_df_timestamp_for_trendlines = None
         
-        # Данные для расчета смещения (например, весь отфильтрованный DataFrame или только 'close')
-        # Передаем весь DataFrame, чтобы функция могла выбрать нужные столбцы (high, low)
-        price_series_for_offset_calc = market_data_df_filtered 
+        data_for_offset_calculation = market_data_df_filtered 
 
 
     if interval_from_request == settings.CONTEXT_TIMEFRAME and not market_data_df_filtered.empty:
@@ -147,17 +145,18 @@ def get_chart_data():
                     "price": point['price'],
                 })
 
-            if last_df_timestamp_for_trendlines:
+            if last_df_timestamp_for_trendlines and data_for_offset_calculation is not None and not data_for_offset_calculation.empty: 
                  # print(f"API: Вызов determine_trend_lines_v2 с last_df_timestamp: {last_df_timestamp_for_trendlines}")
                  trend_lines_data = determine_trend_lines_v2(
                      swing_highs, 
                      swing_lows, 
                      last_df_timestamp_for_trendlines, 
-                     price_series_for_offset_calc # Передаем данные для расчета смещения
+                     data_for_offset_calculation,
+                     points_window_size=settings.TRENDLINE_POINTS_WINDOW_SIZE if hasattr(settings, 'TRENDLINE_POINTS_WINDOW_SIZE') else 5 # Используем настройку или значение по умолчанию
                  )
                  # print(f"API: determine_trend_lines_v2 вернула {len(trend_lines_data)} линий.")
             # else:
-                # print("API: last_df_timestamp_for_trendlines не определен, линии тренда не будут рассчитаны.")
+                # print("API: last_df_timestamp_for_trendlines или data_for_offset_calculation не определены, линии тренда не будут рассчитаны.")
 
             analysis_summary_data = summarize_analysis(
                 market_data_df_filtered,

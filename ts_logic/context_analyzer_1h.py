@@ -210,125 +210,118 @@ def determine_overall_market_context(structure_points: list):
     return context
 
 
-def determine_trend_lines_v2(swing_highs: list, swing_lows: list, last_data_timestamp: pd.Timestamp = None, price_data_for_offset: pd.Series = None):
+def determine_trend_lines_v2(swing_highs: list, swing_lows: list, 
+                             last_data_timestamp: pd.Timestamp = None, 
+                             price_data_for_offset: pd.DataFrame = None,
+                             points_window_size: int = 5): # Новый параметр для окна выбора точек
     """
-    Определяет линии тренда на основе последних двух свингов с вертикальным смещением.
+    Определяет линии тренда (конверт) на основе N наиболее экстремальных свингов 
+    в недавнем окне, с вертикальным смещением.
     Линии продлеваются до last_data_timestamp.
-    Эта функция НЕ зависит от HH/HL/LH/LL.
     """
     trend_lines = []
     
-    offset_percentage = 0.001 # 0.1% отступ. Этот параметр можно вынести в settings.py
+    offset_percentage = 0.002 # 0.2% отступ. Можно вынести в settings.py
     offset_amount = 0
 
     if price_data_for_offset is not None and not price_data_for_offset.empty:
-        # Используем среднее значение из high и low для более стабильного расчета средней цены
-        if 'high' in price_data_for_offset.index and 'low' in price_data_for_offset.index: # Проверка если это Series из DataFrame
+        if 'high' in price_data_for_offset.columns and 'low' in price_data_for_offset.columns: 
              avg_price = (price_data_for_offset['high'] + price_data_for_offset['low']).mean() / 2
-        elif isinstance(price_data_for_offset, pd.Series): # Если это просто Series (например, 'close')
+        elif isinstance(price_data_for_offset, pd.Series): 
             avg_price = price_data_for_offset.mean()
-        else: # Fallback, если price_data_for_offset неожиданного типа
+        else: 
             avg_price = 0 
-            print("determine_trend_lines_v2: Не удалось рассчитать avg_price для смещения.")
+            print("determine_trend_lines_v2: Не удалось рассчитать avg_price для смещения, price_data_for_offset имеет неожиданный тип или не содержит нужных колонок.")
 
-        if avg_price > 0: # Убедимся, что средняя цена не ноль
+        if avg_price > 0: 
             offset_amount = avg_price * offset_percentage
-            # print(f"determine_trend_lines_v2: Рассчитан offset_amount: {offset_amount} (avg_price: {avg_price})")
         else:
-            print(f"determine_trend_lines_v2: avg_price равен нулю, offset_amount не будет применен.")
-
+            print(f"determine_trend_lines_v2: avg_price ({avg_price}) не положительный, offset_amount не будет применен.")
 
     if not last_data_timestamp:
         all_swing_times = [p['time'] for p in swing_highs] + [p['time'] for p in swing_lows]
-        if not all_swing_times:
-            # print("determine_trend_lines_v2: Нет данных о времени свингов, невозможно определить last_data_timestamp.")
-            return trend_lines
+        if not all_swing_times: return trend_lines
         last_data_timestamp = max(all_swing_times)
-        # print(f"determine_trend_lines_v2: last_data_timestamp не передан, используется максимальное время свинга: {last_data_timestamp}")
 
-    # --- ЛИНИЯ ПОДДЕРЖКИ ПО ПОСЛЕДНИМ ДВУМ МИНИМУМАМ ---
-    sorted_lows = sorted(swing_lows, key=lambda x: x['time'])
-    if len(sorted_lows) >= 2:
-        p_start_low = sorted_lows[-2]
-        p_end_for_slope_low = sorted_lows[-1]
-
-        start_price_orig_low = p_start_low['price']
-        # Конечная цена для расчета наклона - это цена второго свинга
-        end_price_for_slope_low = p_end_for_slope_low['price'] 
+    # --- ЛИНИЯ ПОДДЕРЖКИ (КОНВЕРТ) ---
+    if len(swing_lows) >= 2:
+        # Сортируем все свинги по времени, чтобы взять последние N
+        all_time_sorted_lows = sorted(swing_lows, key=lambda x: x['time'], reverse=True)
+        # Выбираем до N последних по времени свингов
+        recent_lows_by_time = all_time_sorted_lows[:points_window_size]
         
-        final_end_time_low = last_data_timestamp
-        # Начальное значение для проецируемой цены (будет обновлено)
-        final_projected_price_low = end_price_for_slope_low 
-
-        if not (isinstance(p_start_low['time'], pd.Timestamp) and isinstance(p_end_for_slope_low['time'], pd.Timestamp)):
-            # print("determine_trend_lines_v2: Время в точках минимума не является Timestamp. Пропуск линии поддержки.")
-            pass
-        elif p_start_low['time'] < p_end_for_slope_low['time']:
-            time_delta_original_seconds = (p_end_for_slope_low['time'] - p_start_low['time']).total_seconds()
-            price_delta_original = end_price_for_slope_low - start_price_orig_low # Наклон по двум точкам
-
-            if time_delta_original_seconds > 0:
-                slope = price_delta_original / time_delta_original_seconds
-                # Проекция от p_start_low до last_data_timestamp
-                time_delta_to_projected_end_seconds = (last_data_timestamp - p_start_low['time']).total_seconds()
-                final_projected_price_low = start_price_orig_low + slope * time_delta_to_projected_end_seconds
-            # else: slope is undefined, final_projected_price_low remains end_price_for_slope_low
-        elif p_start_low['time'] == p_end_for_slope_low['time']: # Точки на одной свече
-             final_projected_price_low = end_price_for_slope_low # Горизонтальная линия на уровне этой цены
-        
-        # Применяем смещение: для поддержки - вниз
-        start_price_offset_low = start_price_orig_low - offset_amount
-        final_projected_price_offset_low = final_projected_price_low - offset_amount
-        
-        if isinstance(p_start_low['time'], pd.Timestamp) and p_start_low['time'] < final_end_time_low :
-            trend_lines.append({
-                'start_time': p_start_low['time'], 'start_price': start_price_offset_low,
-                'end_time': final_end_time_low, 'end_price': final_projected_price_offset_low,
-                'color': '#26A69A',
-                'lineStyle': LINE_STYLE_SOLID
-            })
-            # print(f"determine_trend_lines_v2: Добавлена линия поддержки (смещенная): {p_start_low['time']} ({start_price_offset_low}) -> {final_end_time_low} ({final_projected_price_offset_low})")
-
-    # --- ЛИНИЯ СОПРОТИВЛЕНИЯ ПО ПОСЛЕДНИМ ДВУМ МАКСИМУМАМ ---
-    sorted_highs = sorted(swing_highs, key=lambda x: x['time'])
-    if len(sorted_highs) >= 2:
-        p_start_high = sorted_highs[-2]
-        p_end_for_slope_high = sorted_highs[-1]
-
-        start_price_orig_high = p_start_high['price']
-        end_price_for_slope_high = p_end_for_slope_high['price']
-        
-        final_end_time_high = last_data_timestamp
-        final_projected_price_high = end_price_for_slope_high
-
-        if not (isinstance(p_start_high['time'], pd.Timestamp) and isinstance(p_end_for_slope_high['time'], pd.Timestamp)):
-            # print("determine_trend_lines_v2: Время в точках максимума не является Timestamp. Пропуск линии сопротивления.")
-            pass
-        elif p_start_high['time'] < p_end_for_slope_high['time']:
-            time_delta_original_seconds = (p_end_for_slope_high['time'] - p_start_high['time']).total_seconds()
-            price_delta_original = end_price_for_slope_high - start_price_orig_high
-
-            if time_delta_original_seconds > 0:
-                slope = price_delta_original / time_delta_original_seconds
-                time_delta_to_projected_end_seconds = (last_data_timestamp - p_start_high['time']).total_seconds()
-                final_projected_price_high = start_price_orig_high + slope * time_delta_to_projected_end_seconds
-        elif p_start_high['time'] == p_end_for_slope_high['time']:
-             final_projected_price_high = end_price_for_slope_high
-        
-        # Применяем смещение: для сопротивления - вверх
-        start_price_offset_high = start_price_orig_high + offset_amount
-        final_projected_price_offset_high = final_projected_price_high + offset_amount
-
-        if isinstance(p_start_high['time'], pd.Timestamp) and p_start_high['time'] < final_end_time_high:
-            trend_lines.append({
-                'start_time': p_start_high['time'], 'start_price': start_price_offset_high,
-                'end_time': final_end_time_high, 'end_price': final_projected_price_offset_high,
-                'color': '#EF5350',
-                'lineStyle': LINE_STYLE_SOLID
-            })
-            # print(f"determine_trend_lines_v2: Добавлена линия сопротивления (смещенная): {p_start_high['time']} ({start_price_offset_high}) -> {final_end_time_high} ({final_projected_price_offset_high})")
+        if len(recent_lows_by_time) >= 2:
+            # Из этих недавних по времени свингов, выбираем 2 с самыми низкими ценами
+            recent_lows_by_time.sort(key=lambda x: x['price']) # Сортируем по цене (возр.)
             
-    # print(f"determine_trend_lines_v2: Всего линий тренда: {len(trend_lines)}")
+            # Выбираем два самых низких свинга из недавнего окна
+            # и сортируем их по времени для правильного наклона
+            points_for_line_low = sorted(recent_lows_by_time[:2], key=lambda x: x['time'])
+            p_start_low = points_for_line_low[0]
+            p_end_for_slope_low = points_for_line_low[1]
+
+            start_price_orig_low = p_start_low['price']
+            end_price_for_slope_low = p_end_for_slope_low['price'] 
+            
+            final_end_time_low = last_data_timestamp
+            final_projected_price_low = end_price_for_slope_low 
+
+            if p_start_low['time'] < p_end_for_slope_low['time']: 
+                time_delta_original_seconds = (p_end_for_slope_low['time'] - p_start_low['time']).total_seconds()
+                price_delta_original = end_price_for_slope_low - start_price_orig_low 
+                if time_delta_original_seconds > 0:
+                    slope = price_delta_original / time_delta_original_seconds
+                    time_delta_to_projected_end_seconds = (last_data_timestamp - p_start_low['time']).total_seconds()
+                    final_projected_price_low = start_price_orig_low + slope * time_delta_to_projected_end_seconds
+            # Если p_start_low['time'] == p_end_for_slope_low['time'], наклон будет 0,
+            # final_projected_price_low = start_price_orig_low, что корректно для горизонтальной линии.
+
+            start_price_offset_low = start_price_orig_low - offset_amount
+            final_projected_price_offset_low = final_projected_price_low - offset_amount
+            
+            if p_start_low['time'] < final_end_time_low : 
+                trend_lines.append({
+                    'start_time': p_start_low['time'], 'start_price': start_price_offset_low,
+                    'end_time': final_end_time_low, 'end_price': final_projected_price_offset_low,
+                    'color': '#26A69A', 'lineStyle': LINE_STYLE_SOLID
+                })
+
+    # --- ЛИНИЯ СОПРОТИВЛЕНИЯ (КОНВЕРТ) ---
+    if len(swing_highs) >= 2:
+        all_time_sorted_highs = sorted(swing_highs, key=lambda x: x['time'], reverse=True)
+        recent_highs_by_time = all_time_sorted_highs[:points_window_size]
+
+        if len(recent_highs_by_time) >= 2:
+            recent_highs_by_time.sort(key=lambda x: x['price'], reverse=True) # Сортируем по цене (убыв.)
+            
+            points_for_line_high = sorted(recent_highs_by_time[:2], key=lambda x: x['time'])
+            p_start_high = points_for_line_high[0]
+            p_end_for_slope_high = points_for_line_high[1]
+
+            start_price_orig_high = p_start_high['price']
+            end_price_for_slope_high = p_end_for_slope_high['price']
+            
+            final_end_time_high = last_data_timestamp
+            final_projected_price_high = end_price_for_slope_high
+
+            if p_start_high['time'] < p_end_for_slope_high['time']:
+                time_delta_original_seconds = (p_end_for_slope_high['time'] - p_start_high['time']).total_seconds()
+                price_delta_original = end_price_for_slope_high - start_price_orig_high
+                if time_delta_original_seconds > 0:
+                    slope = price_delta_original / time_delta_original_seconds
+                    time_delta_to_projected_end_seconds = (last_data_timestamp - p_start_high['time']).total_seconds()
+                    final_projected_price_high = start_price_orig_high + slope * time_delta_to_projected_end_seconds
+
+            start_price_offset_high = start_price_orig_high + offset_amount
+            final_projected_price_offset_high = final_projected_price_high + offset_amount
+
+            if p_start_high['time'] < final_end_time_high:
+                trend_lines.append({
+                    'start_time': p_start_high['time'], 'start_price': start_price_offset_high,
+                    'end_time': final_end_time_high, 'end_price': final_projected_price_offset_high,
+                    'color': '#EF5350', 'lineStyle': LINE_STYLE_SOLID
+                })
+            
     return trend_lines
 
 
@@ -400,7 +393,7 @@ def summarize_analysis(market_data_df: pd.DataFrame, structure_points: list, ses
 if __name__ == '__main__':
     print("Тестирование context_analyzer_1h.py...")
     rng = pd.date_range(start='2023-01-01 00:00', end='2023-01-03 23:59', freq='1H', tz='UTC')
-    data_dict = { # Переименовал data в data_dict, чтобы не конфликтовать с модулем data
+    data_dict = { 
         'open': [100, 102, 101, 103, 102, 105, 104, 106, 105, 107, 106, 108, 107, 105, 106, 104, 102, 103, 101, 100] * (len(rng)//20 +1) [:len(rng)],
         'high': [101, 103, 102, 104, 103, 106, 105, 107, 106, 108, 107, 109, 108, 106, 107, 105, 103, 104, 102, 101] * (len(rng)//20 +1) [:len(rng)],
         'low':  [99,  101, 100, 102, 101, 104, 103, 105, 104, 106, 105, 107, 106, 104, 105, 103, 101, 102, 100, 99]  * (len(rng)//20 +1) [:len(rng)],
@@ -426,10 +419,9 @@ if __name__ == '__main__':
 
     last_ts_for_lines = test_df.index[-1] if not test_df.empty else None
     if last_ts_for_lines:
-        # Для теста передаем Series 'close' для расчета смещения
-        price_data_series = test_df['close'] if 'close' in test_df else pd.Series(dtype=float)
-        trend_lines_new = determine_trend_lines_v2(sw_h, sw_l, last_ts_for_lines, price_data_series)
-        print(f"\nЛинии тренда (новая логика, v2 со смещением): {len(trend_lines_new)}")
+        # Для теста передаем DataFrame для расчета смещения
+        trend_lines_new = determine_trend_lines_v2(sw_h, sw_l, last_ts_for_lines, test_df, points_window_size=3) # Пример с points_window_size=3
+        print(f"\nЛинии тренда (новая логика, v2 со смещением, окно=3): {len(trend_lines_new)}")
         for tl_idx, tl_val in enumerate(trend_lines_new):
             print(f"  Линия {tl_idx+1}: {tl_val['start_time']} ({tl_val['start_price']:.2f}) -> {tl_val['end_time']} ({tl_val['end_price']:.2f}) Color: {tl_val['color']}")
     else:
