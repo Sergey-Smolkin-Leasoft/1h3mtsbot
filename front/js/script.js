@@ -1,18 +1,15 @@
 // front/js/script.js
 
 window.addEventListener('load', () => {
-    const chartContainer = document.getElementById('chart-container'); // Сам график
-    const chartContainerWrapper = document.getElementById('chart-container-wrapper'); // Обертка для графика
+    const chartContainer = document.getElementById('chart-container'); 
+    const chartContainerWrapper = document.getElementById('chart-container-wrapper'); 
     const timeframeSelect = document.getElementById('timeframe-select');
     const backtestDateInput = document.getElementById('backtest-date');
     
-    // Кнопки инструментов на новой вертикальной панели
     const toolPointerButton = document.getElementById('tool-pointer');
     const toolTrendlineButton = document.getElementById('tool-trendline');
-    // const toolHorizontalLineButton = document.getElementById('tool-horizontal-line'); 
     const clearDrawnLinesButton = document.getElementById('clear-drawn-lines');
 
-    // Контейнеры для сводки анализа
     const generalSummaryDiv = document.getElementById('analysis-summary-general');
     const detailedSummaryDiv = document.getElementById('analysis-summary-detailed');
     const targetsSummaryDiv = document.getElementById('analysis-summary-targets');
@@ -32,21 +29,20 @@ window.addEventListener('load', () => {
     let candlestickSeries = null;
     let serverTrendLineSeries = []; 
     let userDrawnLineSeries = [];   
+    let daySeparatorLineSeries = null; 
     
     let currentDrawingTool = 'pointer'; 
     let firstClickPoint = null; 
 
-    // Собираем кнопки инструментов в массив для удобного управления их состоянием
     const drawingToolButtons = [];
     if (toolPointerButton) drawingToolButtons.push(toolPointerButton);
     if (toolTrendlineButton) drawingToolButtons.push(toolTrendlineButton);
-    // if (toolHorizontalLineButton) drawingToolButtons.push(toolHorizontalLineButton);
 
 
     function setActiveTool(selectedToolId) {
         currentDrawingTool = selectedToolId;
         drawingToolButtons.forEach(button => {
-            if (button.id === `tool-${selectedToolId}`) { // Сравниваем ID кнопки с ID инструмента
+            if (button.id === `tool-${selectedToolId}`) { 
                 button.classList.add('active');
             } else {
                 button.classList.remove('active');
@@ -54,22 +50,32 @@ window.addEventListener('load', () => {
         });
         chartContainer.style.cursor = (currentDrawingTool === 'pointer') ? 'default' : 'crosshair';
         firstClickPoint = null; 
-        console.log("Активный инструмент:", currentDrawingTool);
+        // console.log("Активный инструмент:", currentDrawingTool);
     }
 
 
     try {
-        chart = LightweightCharts.createChart(chartContainer, { // Создаем график в #chart-container
+        chart = LightweightCharts.createChart(chartContainer, { 
             width: chartContainer.clientWidth,
             height: chartContainer.clientHeight,
-            layout: { background: { color: '#FFFFFF' }, textColor: '#000000' },
-            grid: { vertLines: { color: '#E0E0E0' }, horzLines: { color: '#E0E0E0' } },
-            timeScale: { timeVisible: true, secondsVisible: false, borderColor: '#B0B0B0' },
+            layout: { 
+                background: { color: '#FFFFFF' }, 
+                textColor: '#000000' 
+            },
+            grid: { 
+                vertLines: { color: 'rgba(197, 203, 206, 0)' },
+                horzLines: { color: 'rgba(197, 203, 206, 0)' },
+            },
+            timeScale: { 
+                timeVisible: true, 
+                secondsVisible: false, 
+                borderColor: '#B0B0B0',
+                timezone: 'Etc/GMT-3', // Устанавливаем часовой пояс UTC+3
+            },
             crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
             priceScale: { borderColor: '#B0B0B0' },
         });
 
-        // ИСПРАВЛЕНИЕ: Используем chart.addSeries для CandlestickSeries
         candlestickSeries = chart.addSeries(LightweightCharts.CandlestickSeries, {
             upColor: '#26A69A', downColor: '#EF5350',
             borderVisible: false, wickColor: '#7F8C8D',
@@ -81,86 +87,56 @@ window.addEventListener('load', () => {
         return;
     }
 
-    // --- ЛОГИКА РИСОВАНИЯ ЛИНИЙ ---
     if(toolPointerButton) toolPointerButton.addEventListener('click', () => setActiveTool('pointer'));
     if(toolTrendlineButton) toolTrendlineButton.addEventListener('click', () => setActiveTool('trendline'));
-    // if (toolHorizontalLineButton) toolHorizontalLineButton.addEventListener('click', () => setActiveTool('horizontal'));
     
     clearDrawnLinesButton.addEventListener('click', () => {
         userDrawnLineSeries.forEach(line => chart.removeSeries(line));
         userDrawnLineSeries = [];
-        console.log("Все нарисованные пользователем линии удалены.");
     });
 
     chart.subscribeClick(param => {
-        if (currentDrawingTool === 'pointer' || !candlestickSeries) {
-            return;
-        }
+        if (currentDrawingTool === 'pointer' || !candlestickSeries) return;
         if (!param.point || typeof param.time !== 'number') {
-            console.warn("Невалидные параметры клика для рисования.", param);
             firstClickPoint = null; 
             return;
         }
-        
         const price = candlestickSeries.coordinateToPrice(param.point.y);
         const time = param.time; 
-
         if (price === null) { 
-            console.warn("Не удалось преобразовать координату Y клика в цену.");
             firstClickPoint = null; 
             return;
         }
-        
-        // console.log(`Рисование: Клик -> Время=${time}, Цена=${price}, Инструмент=${currentDrawingTool}`);
-        
         if (currentDrawingTool === 'trendline') {
             if (!firstClickPoint) {
                 firstClickPoint = { time, price }; 
-                // console.log("Линия тренда: Первая точка установлена:", firstClickPoint);
             } else {
                 if (typeof firstClickPoint.time !== 'number') { 
-                    console.error("Ошибка: Сохраненное firstClickPoint.time не является числом!", firstClickPoint);
                     firstClickPoint = null; 
                     return;
                 }
-                // console.log("Линия тренда: Вторая точка установлена:", { time, price });
-
-                // Используем chart.addSeries(...) для пользовательских линий
                 const userLine = chart.addSeries(LightweightCharts.LineSeries, {
-                    color: 'purple', 
-                    lineWidth: 2,
+                    color: 'purple', lineWidth: 2,
                     lineStyle: LightweightCharts.LineStyle.Dashed, 
-                    lastValueVisible: false,
-                    priceLineVisible: false,
+                    lastValueVisible: false, priceLineVisible: false,
                 });
-                
                 userLine.setData([
                     { time: firstClickPoint.time, value: firstClickPoint.price },
                     { time: time, value: price } 
                 ]);
                 userDrawnLineSeries.push(userLine);
-                // console.log("Линия тренда: Линия нарисована.");
                 firstClickPoint = null; 
-                // setActiveTool('pointer'); // Опционально: возвращаться к курсору после рисования
             }
         } 
     });
 
-
-    // --- СУЩЕСТВУЮЩАЯ ЛОГИКА ЗАГРУЗКИ ДАННЫХ И ОТОБРАЖЕНИЯ ---
     async function fetchChartData(timeframe, backtestDate = null) {
         try {
             let url = `/api/chart_data?interval=${timeframe}`;
-            if (backtestDate) {
-                url += `&endDate=${backtestDate}`;
-            }
+            if (backtestDate) url += `&endDate=${backtestDate}`;
             const response = await fetch(url);
-            if (!response.ok) {
-                console.error(`fetchChartData: Ошибка HTTP! статус: ${response.status}`);
-                throw new Error(`HTTP error! status: ${response.status}`);
-            }
-            const data = await response.json();
-            return data;
+            if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+            return await response.json();
         } catch (error) {
             console.error('fetchChartData: Ошибка при получении данных графика:', error);
             return { ohlcv: [], markers: [], trendLines: [], analysisSummary: {"Общая информация": [], "Подробная информация": [], "Цели": [], "Точки набора": [], "Другое": []} };
@@ -168,14 +144,13 @@ window.addEventListener('load', () => {
     }
 
     function formatOhlcvData(data) {
-        const formattedData = data.map(item => ({
+        // Данные с сервера приходят в UTC (или должны быть преобразованы в UTC timestamp)
+        // Lightweight Charts автоматически преобразует их в timezone, указанную в timeScale
+        return data.map(item => ({
             time: new Date(item.time).getTime() / 1000, 
-            open: parseFloat(item.open),
-            high: parseFloat(item.high),
-            low: parseFloat(item.low),
-            close: parseFloat(item.close),
+            open: parseFloat(item.open), high: parseFloat(item.high),
+            low: parseFloat(item.low), close: parseFloat(item.close),
         }));
-        return formattedData;
     }
 
     function formatMarkerData(data) {
@@ -192,8 +167,6 @@ window.addEventListener('load', () => {
              'F_L_NY1': { shape: 'arrowUp', color: 'dodgerblue', position: 'belowBar', text: '', size: 0.8 },
              'F_H_NY2': { shape: 'arrowDown', color: 'deepskyblue', position: 'aboveBar', text: '', size: 0.8 }, 
              'F_L_NY2': { shape: 'arrowUp', color: 'deepskyblue', position: 'belowBar', text: '', size: 0.8 },   
-             'SETUP_Resist': { shape: 'square', color: '#000000', position: 'aboveBar', text: 'SR', size: 1.2 }, 
-             'SETUP_Support': { shape: 'square', color: '#000000', position: 'belowBar', text: 'SS', size: 1.2 },
              'UNKNOWN_SETUP': { shape: 'circle', color: '#A9A9A9', position: 'aboveBar', text: '?', size: 1 }, 
          };
          const filteredData = data.filter(item => markerMap.hasOwnProperty(item.type));
@@ -201,11 +174,10 @@ window.addEventListener('load', () => {
              const markerType = markerMap[item.type];
              return {
                  time: new Date(item.time).getTime() / 1000, 
-                 position: markerType.position,
-                 color: markerType.color, 
-                 shape: markerType.shape,
-                 text: markerType.text !== undefined ? markerType.text : item.type,
+                 position: markerType.position, color: markerType.color, 
+                 shape: markerType.shape, text: markerType.text !== undefined ? markerType.text : item.type,
                  size: markerType.size !== undefined ? markerType.size : 1, 
+                 id: item.id || markerType.id 
              };
          });
     }
@@ -216,16 +188,14 @@ window.addEventListener('load', () => {
                 { time: new Date(line.start_time).getTime() / 1000, value: line.start_price },
                 { time: new Date(line.end_time).getTime() / 1000, value: line.end_price }
             ],
-            color: line.color || '#000000',
-            lineWidth: 2, 
+            color: line.color || '#000000', lineWidth: 2, 
             lineStyle: line.lineStyle !== undefined ? line.lineStyle : LightweightCharts.LineStyle.Solid, 
-            crosshairMarkerVisible: false, 
-            lastValueVisible: false, 
-            priceLineVisible: false, 
+            crosshairMarkerVisible: false, lastValueVisible: false, priceLineVisible: false, 
         }));
     }
 
     function displayAnalysisSummary(summaryData) {
+        // ... (код без изменений, как в предыдущей версии)
         if (generalSummaryDiv) generalSummaryDiv.querySelector('ul').innerHTML = '';
         if (detailedSummaryDiv) detailedSummaryDiv.querySelector('ul').innerHTML = '';
         if (targetsSummaryDiv) targetsSummaryDiv.querySelector('ul').innerHTML = '';
@@ -278,7 +248,7 @@ window.addEventListener('load', () => {
              }
         }
     }
-
+    
     async function loadChartData(timeframe, backtestDate = null) {
         const chartData = await fetchChartData(timeframe, backtestDate);
 
@@ -287,8 +257,13 @@ window.addEventListener('load', () => {
         });
         serverTrendLineSeries = [];
 
-        if (candlestickSeries) {
-            if (typeof LightweightCharts.createSeriesMarkers === 'function') {
+        if (daySeparatorLineSeries && chart) {
+            chart.removeSeries(daySeparatorLineSeries);
+            daySeparatorLineSeries = null;
+        }
+
+        if (candlestickSeries) { 
+             if (typeof LightweightCharts.createSeriesMarkers === 'function') {
                 LightweightCharts.createSeriesMarkers(candlestickSeries, []);
             } else if (typeof candlestickSeries.setMarkers === 'function') {
                 candlestickSeries.setMarkers([]);
@@ -299,19 +274,66 @@ window.addEventListener('load', () => {
             const formattedOhlcv = formatOhlcvData(chartData.ohlcv);
             if (candlestickSeries) candlestickSeries.setData(formattedOhlcv);
 
+            let todayTimestampUTC;
+            if (backtestDate) { 
+                const [year, month, day] = backtestDate.split('-').map(Number);
+                // Важно: getTime() вернет timestamp в миллисекундах UTC. Делим на 1000 для секунд.
+                todayTimestampUTC = new Date(Date.UTC(year, month - 1, day, 0, 0, 0)).getTime() / 1000;
+            } else { 
+                const lastCandleTime = new Date(formattedOhlcv[formattedOhlcv.length - 1].time * 1000); // Преобразуем секунды в мс для Date
+                todayTimestampUTC = new Date(Date.UTC(lastCandleTime.getUTCFullYear(), lastCandleTime.getUTCMonth(), lastCandleTime.getUTCDate(), 0, 0, 0)).getTime() / 1000;
+            }
+
+            if (todayTimestampUTC && candlestickSeries) {
+                let minPrice = Infinity;
+                let maxPrice = -Infinity;
+                formattedOhlcv.forEach(candle => {
+                    if (candle.low < minPrice) minPrice = candle.low;
+                    if (candle.high > maxPrice) maxPrice = candle.high;
+                });
+
+                const pricePadding = (maxPrice - minPrice) * 0.05; 
+                minPrice -= pricePadding;
+                maxPrice += pricePadding;
+                
+                if (minPrice === Infinity || maxPrice === -Infinity) { 
+                    minPrice = candlestickSeries.coordinateToPrice(chart.priceScale('right').height());
+                    maxPrice = candlestickSeries.coordinateToPrice(0);
+                }
+
+                daySeparatorLineSeries = chart.addSeries(LightweightCharts.LineSeries, {
+                    color: 'rgba(180, 180, 180, 0.7)', 
+                    lineWidth: 1,
+                    lineStyle: LightweightCharts.LineStyle.Dashed,
+                    lastValueVisible: false,
+                    priceLineVisible: false,
+                    autoscaleInfoProvider: () => ({ 
+                        priceRange: {
+                            minValue: minPrice,
+                            maxValue: maxPrice,
+                        },
+                    }),
+                });
+                daySeparatorLineSeries.setData([
+                    { time: todayTimestampUTC, value: minPrice },
+                    { time: todayTimestampUTC, value: maxPrice }
+                ]);
+            }
+            
             if (chartData.markers && chartData.markers.length > 0) {
-                const formattedMarkers = formatMarkerData(chartData.markers);
-                if (typeof LightweightCharts.createSeriesMarkers === 'function') {
-                    LightweightCharts.createSeriesMarkers(candlestickSeries, formattedMarkers);
-                } else if (typeof candlestickSeries.setMarkers === 'function') {
-                    candlestickSeries.setMarkers(formattedMarkers);
+                const serverMarkers = formatMarkerData(chartData.markers);
+                 if (candlestickSeries && serverMarkers.length > 0) {
+                     if (typeof LightweightCharts.createSeriesMarkers === 'function') {
+                        LightweightCharts.createSeriesMarkers(candlestickSeries, serverMarkers);
+                    } else if (typeof candlestickSeries.setMarkers === 'function') {
+                        candlestickSeries.setMarkers(serverMarkers);
+                    }
                 }
             }
 
             if (chartData.trendLines && chartData.trendLines.length > 0) {
                 const formattedTrendLines = formatTrendLineData(chartData.trendLines);
                 formattedTrendLines.forEach(lineDef => {
-                    // Используем chart.addSeries(...) для серверных линий
                     const lineSeries = chart.addSeries(LightweightCharts.LineSeries, {
                         color: lineDef.color, 
                         lineWidth: lineDef.lineWidth,
@@ -347,7 +369,6 @@ window.addEventListener('load', () => {
     }
     
     setActiveTool('pointer'); 
-
     loadChartData(timeframeSelect ? timeframeSelect.value : '1h');
 
     const resizeObserver = new ResizeObserver(entries => {
