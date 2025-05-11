@@ -1,84 +1,51 @@
-# app.py
 import os
 import sys
 from flask import Flask, jsonify, render_template, send_from_directory, request
 import pandas as pd
-from datetime import datetime, timezone, timedelta # Импортируем timedelta
+from datetime import datetime, timezone, timedelta
 
-# Добавляем корень проекта в sys.path для корректных импортов
 PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
 if PROJECT_ROOT not in sys.path:
     sys.path.append(PROJECT_ROOT)
 
 try:
-    # Импортируем функции из ваших существующих модулей
     from configs import settings
     from core.data_fetcher import get_forex_data
     from ts_logic.context_analyzer_1h import (
         find_swing_points,
-        analyze_market_structure_points,
-        determine_overall_market_context,
-        determine_trend_lines,
+        analyze_market_structure_points, # Для маркеров HH/HL и контекста
+        determine_overall_market_context, # Для текстовой сводки
+        determine_trend_lines_v2,      # НОВАЯ функция для линий тренда
         summarize_analysis
     )
     from ts_logic.fractal_analyzer import analyze_fractal_setups
 
 except ImportError as e:
     print(f"Ошибка импорта в app.py: {e}")
-    # ... (остальная часть обработки ошибки импорта)
     sys.exit(1)
 
-# Указываем Flask искать шаблоны и статические файлы в папке 'front'
 app = Flask(__name__, static_folder='front', template_folder='front')
 
-# --- СЛОВАРЬ ДЛЯ СОПОСТАВЛЕНИЯ ИНТЕРВАЛОВ ---
 INTERVAL_MAP_API = {
-    "1m": "1min",
-    "3m": "3min",
-    "5m": "5min",
-    "15m": "15min",
-    "30m": "30min",
-    "45m": "45min", # На случай, если API поддерживает, а вы добавите на фронт
-    "1h": "1h",
-    "2h": "2h",
-    "4h": "4h",
-    "8h": "8h",   # На случай, если API поддерживает
-    "1d": "1day", # API ожидает '1day'
-    "1w": "1week", # API ожидает '1week'
-    "1M": "1month" # API ожидает '1month' (обратите внимание на регистр 'M')
+    "1m": "1min", "3m": "3min", "5m": "5min", "15m": "15min",
+    "30m": "30min", "45m": "45min", "1h": "1h", "2h": "2h",
+    "4h": "4h", "8h": "8h", "1d": "1day", "1w": "1week", "1M": "1month"
 }
-# Убедитесь, что значения в select на фронтенде (1m, 3m, 5m, 15m, 30m, 1h, 2h, 4h, 1d)
-# являются ключами в этом словаре.
 
-# Маршрут для главной страницы (index.html)
 @app.route('/')
 def index():
-    """Отдает главную HTML страницу."""
     return render_template('index.html')
 
-# Явный маршрут для статических файлов из папки 'front'
 @app.route('/<path:filename>')
 def serve_static(filename):
-    """Отдает статические файлы из директории 'front'."""
     return send_from_directory(app.static_folder, filename)
 
-
-# API маршрут для получения данных графика
 @app.route('/api/chart_data')
 def get_chart_data():
-    """
-    Получает данные OHLCV и точки анализа, форматирует их и возвращает в JSON.
-    """
     symbol = settings.DEFAULT_SYMBOL
     interval_from_request = request.args.get('interval', settings.CONTEXT_TIMEFRAME)
-
-    # Преобразуем интервал в формат API
     api_interval = INTERVAL_MAP_API.get(interval_from_request, interval_from_request)
-    # Если интервала нет в карте, используем его как есть (например, для '1h' это сработает)
-    # но для '5m' он станет '5min'.
-
     print(f"API: Запрошен интервал '{interval_from_request}', используется для API '{api_interval}'")
-
 
     end_date_str = request.args.get('endDate')
     end_date = None
@@ -92,16 +59,13 @@ def get_chart_data():
             end_date = None
 
     api_end_date = end_date if end_date else datetime.now(timezone.utc)
-    days_to_fetch = 60
+    days_to_fetch = 60 
     api_start_date = api_end_date - timedelta(days=days_to_fetch)
 
     print(f"API: Запрос данных для графика {symbol} ({api_interval}) в диапазоне: {api_start_date.strftime('%Y-%m-%d %H:%M:%S %Z')} - {api_end_date.strftime('%Y-%m-%d %H:%M:%S %Z')}...")
-
     market_data_df = get_forex_data(
-        symbol=symbol,
-        interval=api_interval, # Используем преобразованный api_interval
-        start_date=api_start_date,
-        end_date=api_end_date
+        symbol=symbol, interval=api_interval,
+        start_date=api_start_date, end_date=api_end_date
     )
 
     empty_summary = {"Общая информация": [], "Подробная информация": [], "Цели": [], "Точки набора": [], "Другое": []}
@@ -115,7 +79,7 @@ def get_chart_data():
         market_data_df = market_data_df.tz_convert('UTC')
 
     market_data_df_filtered = market_data_df
-    if end_date:
+    if end_date: # Фильтруем данные до указанной даты бэктеста
         market_data_df_filtered = market_data_df[market_data_df.index <= end_date]
         print(f"API: Отфильтровано данных до точной даты бэктеста {end_date}: {len(market_data_df_filtered)} свечей.")
         if market_data_df_filtered.empty:
@@ -125,70 +89,101 @@ def get_chart_data():
     ohlcv_data = []
     if not market_data_df_filtered.empty:
         for index, row in market_data_df_filtered.iterrows():
-            time_str = index.isoformat()
+            time_str = index.isoformat() # Используем ISO формат для времени
             ohlcv_data.append({
                 "time": time_str, "open": row['open'], "high": row['high'],
                 "low": row['low'], "close": row['close'],
             })
 
+    # Инициализация данных для ответа
     marker_data = []
-    trend_lines_data = []
-    analysis_summary_data = {
-        "Общая информация": [], "Подробная информация": [], "Цели": [],
-        "Точки набора": [], "Другое": []
-    }
+    trend_lines_data = [] 
+    analysis_summary_data = empty_summary.copy() # Используем копию, чтобы не изменять оригинал
 
-    # Используем interval_from_request для сравнения с settings.CONTEXT_TIMEFRAME,
-    # так как CONTEXT_TIMEFRAME ('1h') соответствует формату фронтенда.
+    last_df_timestamp_for_trendlines = None
+    if not market_data_df_filtered.empty:
+        last_df_timestamp_for_trendlines = market_data_df_filtered.index[-1]
+        # Убедимся, что это Timestamp, если вдруг нет (хотя должно быть)
+        if not isinstance(last_df_timestamp_for_trendlines, pd.Timestamp):
+            print(f"API: Внимание! last_df_timestamp_for_trendlines не является pd.Timestamp: {type(last_df_timestamp_for_trendlines)}")
+            last_df_timestamp_for_trendlines = None
+
+
+    # Анализ проводится только для основного таймфрейма контекста
     if interval_from_request == settings.CONTEXT_TIMEFRAME and not market_data_df_filtered.empty:
         try:
             current_processing_datetime = market_data_df_filtered.index[-1].to_pydatetime()
-            swing_highs, swing_lows = find_swing_points(market_data_df_filtered, n=settings.SWING_POINT_N)
-            structure_points = analyze_market_structure_points(swing_highs, swing_lows)
-            # Для session_fractal_and_setup_points используется settings.SESSION_FRACTAL_N, который не зависит от текущего интервала графика
-            session_fractal_and_setup_points = analyze_fractal_setups(market_data_df_filtered, current_processing_datetime)
-            overall_context = determine_overall_market_context(structure_points)
-            
-            print(f"API: Общий рыночный контекст для {interval_from_request} (до {end_date_str or 'последняя дата'}): {overall_context}")
 
+            # 1. Находим все свинги (H_SWING, L_SWING)
+            # Эти свинги будут использоваться для новой логики линий тренда
+            # и для определения HH/HL/LH/LL (analyze_market_structure_points)
+            swing_highs, swing_lows = find_swing_points(market_data_df_filtered, n=settings.SWING_POINT_N)
+            
+            # 2. Анализируем структуру для маркеров HH/HL и общего контекста (для текстовой сводки)
+            structure_points = analyze_market_structure_points(swing_highs, swing_lows)
+            overall_context = determine_overall_market_context(structure_points)
+            print(f"API: Общий рыночный контекст (из HH/HL): {overall_context} для {interval_from_request}")
+
+            # 3. Формируем маркеры для графика (HH, HL, LH, LL, H, L, сессионные фракталы, сетапы)
             all_points_for_plot = []
-            if structure_points:
+            if structure_points: # Добавляем HH, HL, LH, LL, H, L
                 all_points_for_plot.extend(structure_points)
+            
+            # Добавляем сессионные фракталы и сетапы
+            session_fractal_and_setup_points = analyze_fractal_setups(market_data_df_filtered, current_processing_datetime)
             if session_fractal_and_setup_points:
                 all_points_for_plot.extend(session_fractal_and_setup_points)
             
+            # Сортировка и удаление дубликатов маркеров
             all_points_for_plot.sort(key=lambda x: x['time'])
             unique_points_for_plot = []
-            seen_keys = set()
+            seen_marker_keys = set()
             for point in all_points_for_plot:
-                time_key_str = point['time'].isoformat(timespec='minutes')
-                price_key_rounded = round(point['price'], 5)
-                key = (time_key_str, point.get('type', 'UNKNOWN'), price_key_rounded)
-                if key not in seen_keys:
+                # Ключ для уникальности маркера: время (до минут), тип, цена (округленная)
+                time_key_str = point['time'].strftime('%Y-%m-%dT%H:%M')
+                price_key_rounded = round(point['price'], 5) 
+                key = (time_key_str, point.get('type', 'UNKNOWN_MARKER'), price_key_rounded)
+                if key not in seen_marker_keys:
                     unique_points_for_plot.append(point)
-                    seen_keys.add(key)
+                    seen_marker_keys.add(key)
             
             for point in unique_points_for_plot:
-                time_str = point['time'].isoformat()
                 marker_data.append({
-                    "time": time_str, "type": point.get('type', 'UNKNOWN'), "price": point['price'],
+                    "time": point['time'].isoformat(), # ISO формат для времени
+                    "type": point.get('type', 'UNKNOWN_MARKER'), 
+                    "price": point['price'],
                 })
 
-            trend_lines_data = determine_trend_lines(structure_points, overall_context)
+            # 4. Определяем линии тренда с использованием НОВОЙ ЛОГИКИ (determine_trend_lines_v2)
+            # Передаем "сырые" swing_highs и swing_lows
+            if last_df_timestamp_for_trendlines:
+                 print(f"API: Вызов determine_trend_lines_v2 с last_df_timestamp: {last_df_timestamp_for_trendlines}")
+                 trend_lines_data = determine_trend_lines_v2(swing_highs, swing_lows, last_df_timestamp_for_trendlines)
+                 print(f"API: determine_trend_lines_v2 вернула {len(trend_lines_data)} линий.")
+            else:
+                print("API: last_df_timestamp_for_trendlines не определен, линии тренда не будут рассчитаны.")
+
+
+            # 5. Формируем сводку анализа
             analysis_summary_data = summarize_analysis(
                 market_data_df_filtered,
-                structure_points,
+                structure_points, # structure_points (HH/HL) все еще нужны для текстовой сводки
                 session_fractal_and_setup_points if session_fractal_and_setup_points else [],
                 overall_context
             )
         except Exception as e_analysis:
             print(f"API: Ошибка во время выполнения аналитики для {interval_from_request}: {e_analysis}")
             import traceback
-            print(traceback.format_exc()) # Выводим полный traceback ошибки аналитики
+            print(traceback.format_exc())
             analysis_summary_data["Общая информация"].append({'description': f"Ошибка при анализе ТФ {interval_from_request}.", 'status': False})
     else:
-        analysis_summary_data["Общая информация"].append({'description': f"Анализ не проводится для ТФ {interval_from_request}.", 'status': False})
+        default_text = f"Анализ (структура, сетапы, линии, сводка) доступен только для ТФ {settings.CONTEXT_TIMEFRAME}."
+        if interval_from_request != settings.CONTEXT_TIMEFRAME:
+             analysis_summary_data["Общая информация"].append({'description': default_text, 'status': False})
+        elif market_data_df_filtered.empty:
+             analysis_summary_data["Общая информация"].append({'description': "Нет данных для анализа.", 'status': False})
         print(f"API: Анализ (структура, сетапы, линии, сводка) пропущен для таймфрейма {interval_from_request}.")
+
 
     print(f"API: Подготовлено {len(ohlcv_data)} свечей, {len(marker_data)} маркеров и {len(trend_lines_data)} линий тренда для ТФ {interval_from_request} (до {end_date_str or 'последняя дата'}).")
 
@@ -200,4 +195,4 @@ def get_chart_data():
     })
 
 if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0')
+    app.run(debug=True, host='0.0.0.0', port=5000)
