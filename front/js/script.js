@@ -1,99 +1,165 @@
 // front/js/script.js
 
-// Изменяем слушатель события с DOMContentLoaded на window.load
 window.addEventListener('load', () => {
-    const chartContainer = document.getElementById('chart-container');
-    const timeframeSelect = document.getElementById('timeframe-select'); // Получаем элемент select
-    const backtestDateInput = document.getElementById('backtest-date'); // Получаем элемент выбора даты
+    const chartContainer = document.getElementById('chart-container'); // Сам график
+    const chartContainerWrapper = document.getElementById('chart-container-wrapper'); // Обертка для графика
+    const timeframeSelect = document.getElementById('timeframe-select');
+    const backtestDateInput = document.getElementById('backtest-date');
+    
+    // Кнопки инструментов на новой вертикальной панели
+    const toolPointerButton = document.getElementById('tool-pointer');
+    const toolTrendlineButton = document.getElementById('tool-trendline');
+    // const toolHorizontalLineButton = document.getElementById('tool-horizontal-line'); 
+    const clearDrawnLinesButton = document.getElementById('clear-drawn-lines');
 
-    // Получаем ссылки на контейнеры для каждой секции сводки анализа
+    // Контейнеры для сводки анализа
     const generalSummaryDiv = document.getElementById('analysis-summary-general');
     const detailedSummaryDiv = document.getElementById('analysis-summary-detailed');
     const targetsSummaryDiv = document.getElementById('analysis-summary-targets');
     const entryPointsSummaryDiv = document.getElementById('analysis-summary-entry-points');
     const otherSummaryDiv = document.getElementById('analysis-summary-other');
 
-
-    if (!chartContainer) {
-        console.error('Контейнер для графика не найден!');
+    if (!chartContainer || !chartContainerWrapper || !toolTrendlineButton || !clearDrawnLinesButton || !toolPointerButton) {
+        console.error('Один или несколько необходимых HTML элементов не найдены!');
         return;
     }
-
-    // Добавляем проверку, что LightweightCharts доступен
     if (typeof LightweightCharts === 'undefined') {
         console.error('Библиотека LightweightCharts не загружена.');
         return;
     }
 
-    let chart = null; // Объявляем chart здесь
-    let candlestickSeries = null; // Объявляем candlestickSeries здесь
-    let trendLineSeries = []; // Массив для хранения серий линий тренда
+    let chart = null;
+    let candlestickSeries = null;
+    let serverTrendLineSeries = []; 
+    let userDrawnLineSeries = [];   
+    
+    let currentDrawingTool = 'pointer'; 
+    let firstClickPoint = null; 
+
+    // Собираем кнопки инструментов в массив для удобного управления их состоянием
+    const drawingToolButtons = [];
+    if (toolPointerButton) drawingToolButtons.push(toolPointerButton);
+    if (toolTrendlineButton) drawingToolButtons.push(toolTrendlineButton);
+    // if (toolHorizontalLineButton) drawingToolButtons.push(toolHorizontalLineButton);
+
+
+    function setActiveTool(selectedToolId) {
+        currentDrawingTool = selectedToolId;
+        drawingToolButtons.forEach(button => {
+            if (button.id === `tool-${selectedToolId}`) { // Сравниваем ID кнопки с ID инструмента
+                button.classList.add('active');
+            } else {
+                button.classList.remove('active');
+            }
+        });
+        chartContainer.style.cursor = (currentDrawingTool === 'pointer') ? 'default' : 'crosshair';
+        firstClickPoint = null; 
+        console.log("Активный инструмент:", currentDrawingTool);
+    }
+
 
     try {
-        // Создаем экземпляр графика
-        chart = LightweightCharts.createChart(chartContainer, {
+        chart = LightweightCharts.createChart(chartContainer, { // Создаем график в #chart-container
             width: chartContainer.clientWidth,
             height: chartContainer.clientHeight,
-            layout: {
-                background: { color: '#FFFFFF' }, // БЕЛЫЙ фон графика
-                textColor: '#000000', // Черный текст для меток осей
-            },
-            grid: {
-                vertLines: { color: '#E0E0E0' }, // Светло-серые вертикальные линии сетки
-                horzLines: { color: '#E0E0E0' }, // Светло-серые горизонтальные линии сетки
-            },
-            timeScale: {
-                timeVisible: true,
-                secondsVisible: false,
-                borderColor: '#B0B0B0', // Цвет границы шкалы времени (темнее серого)
-                timezone: 'UTC',
-            },
-            crosshair: {
-                mode: LightweightCharts.CrosshairMode.Normal,
-            },
-            priceScale: {
-                borderColor: '#B0B0B0', // Цвет границы ценовой шкалы (темнее серого)
-            },
+            layout: { background: { color: '#FFFFFF' }, textColor: '#000000' },
+            grid: { vertLines: { color: '#E0E0E0' }, horzLines: { color: '#E0E0E0' } },
+            timeScale: { timeVisible: true, secondsVisible: false, borderColor: '#B0B0B0' },
+            crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
+            priceScale: { borderColor: '#B0B0B0' },
         });
 
-        if (!chart) {
-             console.error('Не удалось создать экземпляр графика LightweightCharts.');
-             return;
-        }
-
+        // ИСПРАВЛЕНИЕ: Используем chart.addSeries для CandlestickSeries
         candlestickSeries = chart.addSeries(LightweightCharts.CandlestickSeries, {
-            upColor: '#26A69A',
-            downColor: '#EF5350',
-            borderVisible: false,
-            wickColor: '#7F8C8D',
-            wickUpColor: '#26A69A',
-            wickDownColor: '#EF5350',
+            upColor: '#26A69A', downColor: '#EF5350',
+            borderVisible: false, wickColor: '#7F8C8D',
+            wickUpColor: '#26A69A', wickDownColor: '#EF5350',
         });
-
-        if (!candlestickSeries) {
-             console.error('Не удалось создать серию свечей.');
-             return;
-        }
 
     } catch (e) {
-        console.error('Ошибка при создании графика или серии LightweightCharts:', e);
+        console.error('Ошибка при создании графика LightweightCharts:', e);
         return;
     }
 
+    // --- ЛОГИКА РИСОВАНИЯ ЛИНИЙ ---
+    if(toolPointerButton) toolPointerButton.addEventListener('click', () => setActiveTool('pointer'));
+    if(toolTrendlineButton) toolTrendlineButton.addEventListener('click', () => setActiveTool('trendline'));
+    // if (toolHorizontalLineButton) toolHorizontalLineButton.addEventListener('click', () => setActiveTool('horizontal'));
+    
+    clearDrawnLinesButton.addEventListener('click', () => {
+        userDrawnLineSeries.forEach(line => chart.removeSeries(line));
+        userDrawnLineSeries = [];
+        console.log("Все нарисованные пользователем линии удалены.");
+    });
+
+    chart.subscribeClick(param => {
+        if (currentDrawingTool === 'pointer' || !candlestickSeries) {
+            return;
+        }
+        if (!param.point || typeof param.time !== 'number') {
+            console.warn("Невалидные параметры клика для рисования.", param);
+            firstClickPoint = null; 
+            return;
+        }
+        
+        const price = candlestickSeries.coordinateToPrice(param.point.y);
+        const time = param.time; 
+
+        if (price === null) { 
+            console.warn("Не удалось преобразовать координату Y клика в цену.");
+            firstClickPoint = null; 
+            return;
+        }
+        
+        // console.log(`Рисование: Клик -> Время=${time}, Цена=${price}, Инструмент=${currentDrawingTool}`);
+        
+        if (currentDrawingTool === 'trendline') {
+            if (!firstClickPoint) {
+                firstClickPoint = { time, price }; 
+                // console.log("Линия тренда: Первая точка установлена:", firstClickPoint);
+            } else {
+                if (typeof firstClickPoint.time !== 'number') { 
+                    console.error("Ошибка: Сохраненное firstClickPoint.time не является числом!", firstClickPoint);
+                    firstClickPoint = null; 
+                    return;
+                }
+                // console.log("Линия тренда: Вторая точка установлена:", { time, price });
+
+                // Используем chart.addSeries(...) для пользовательских линий
+                const userLine = chart.addSeries(LightweightCharts.LineSeries, {
+                    color: 'purple', 
+                    lineWidth: 2,
+                    lineStyle: LightweightCharts.LineStyle.Dashed, 
+                    lastValueVisible: false,
+                    priceLineVisible: false,
+                });
+                
+                userLine.setData([
+                    { time: firstClickPoint.time, value: firstClickPoint.price },
+                    { time: time, value: price } 
+                ]);
+                userDrawnLineSeries.push(userLine);
+                // console.log("Линия тренда: Линия нарисована.");
+                firstClickPoint = null; 
+                // setActiveTool('pointer'); // Опционально: возвращаться к курсору после рисования
+            }
+        } 
+    });
+
+
+    // --- СУЩЕСТВУЮЩАЯ ЛОГИКА ЗАГРУЗКИ ДАННЫХ И ОТОБРАЖЕНИЯ ---
     async function fetchChartData(timeframe, backtestDate = null) {
         try {
             let url = `/api/chart_data?interval=${timeframe}`;
             if (backtestDate) {
                 url += `&endDate=${backtestDate}`;
             }
-            console.log(`fetchChartData: Запрос к URL: ${url}`);
             const response = await fetch(url);
             if (!response.ok) {
                 console.error(`fetchChartData: Ошибка HTTP! статус: ${response.status}`);
                 throw new Error(`HTTP error! status: ${response.status}`);
             }
             const data = await response.json();
-            console.log('fetchChartData: Получены данные:', data);
             return data;
         } catch (error) {
             console.error('fetchChartData: Ошибка при получении данных графика:', error);
@@ -103,68 +169,59 @@ window.addEventListener('load', () => {
 
     function formatOhlcvData(data) {
         const formattedData = data.map(item => ({
-            time: new Date(item.time).getTime() / 1000,
+            time: new Date(item.time).getTime() / 1000, 
             open: parseFloat(item.open),
             high: parseFloat(item.high),
             low: parseFloat(item.low),
             close: parseFloat(item.close),
         }));
-        console.log('formatOhlcvData: Первые 5 отформатированных временных меток (Unix Timestamp в секундах):', formattedData.slice(0, 5).map(item => item.time));
         return formattedData;
     }
 
     function formatMarkerData(data) {
          const markerMap = {
-             // --- МАРКЕРЫ СТРУКТУРЫ РЫНКА (HH, HL, LH, LL) - ТЕПЕРЬ "ТОЛЬКО ТЕКСТ" ---
-             // Форма сделана очень маленьким кружком (size: 0), чтобы была почти невидима
              'HH': { shape: 'circle', color: 'blue', position: 'aboveBar', text: 'HH', size: 0 },
              'HL': { shape: 'circle', color: 'green', position: 'belowBar', text: 'HL', size: 0 },
              'LH': { shape: 'circle', color: 'red', position: 'aboveBar', text: 'LH', size: 0 },
              'LL': { shape: 'circle', color: 'purple', position: 'belowBar', text: 'LL', size: 0 },
-
-             // Простые максимумы/минимумы (H, L) - также "только текст"
              'H': { shape: 'circle', color: '#808080', position: 'aboveBar', size: 0, text: 'H' },
              'L': { shape: 'circle', color: '#808080', position: 'belowBar', size: 0, text: 'L' },
-
-             // Сетапы УДАЛЕНЫ по запросу пользователя
-             // 'SETUP_Resist': { shape: 'square', color: '#000000', position: 'aboveBar', size: 1.5 },
-             // 'SETUP_Support': { shape: 'square', color: '#000000', position: 'belowBar', size: 1.5 },
-             // 'UNKNOWN_SETUP': { shape: 'circle', color: '#808080', position: 'aboveBar' },
-
-             // --- МАРКЕРЫ ДЛЯ СЕССИОННЫХ ФРАКТАЛОВ (ТРЕУГОЛЬНИКИ БЕЗ ТЕКСТА) ---
              'F_H_AS': { shape: 'arrowDown', color: 'darkorange', position: 'aboveBar', text: '', size: 0.8 },
              'F_L_AS': { shape: 'arrowUp', color: 'darkorange', position: 'belowBar', text: '', size: 0.8 },
              'F_H_NY1': { shape: 'arrowDown', color: 'dodgerblue', position: 'aboveBar', text: '', size: 0.8 },
              'F_L_NY1': { shape: 'arrowUp', color: 'dodgerblue', position: 'belowBar', text: '', size: 0.8 },
+             'F_H_NY2': { shape: 'arrowDown', color: 'deepskyblue', position: 'aboveBar', text: '', size: 0.8 }, 
+             'F_L_NY2': { shape: 'arrowUp', color: 'deepskyblue', position: 'belowBar', text: '', size: 0.8 },   
+             'SETUP_Resist': { shape: 'square', color: '#000000', position: 'aboveBar', text: 'SR', size: 1.2 }, 
+             'SETUP_Support': { shape: 'square', color: '#000000', position: 'belowBar', text: 'SS', size: 1.2 },
+             'UNKNOWN_SETUP': { shape: 'circle', color: '#A9A9A9', position: 'aboveBar', text: '?', size: 1 }, 
          };
-
          const filteredData = data.filter(item => markerMap.hasOwnProperty(item.type));
-
          return filteredData.map(item => {
              const markerType = markerMap[item.type];
              return {
-                 time: new Date(item.time).getTime() / 1000,
+                 time: new Date(item.time).getTime() / 1000, 
                  position: markerType.position,
-                 color: markerType.color, // Этот цвет будет применен к тексту и крошечной форме
+                 color: markerType.color, 
                  shape: markerType.shape,
                  text: markerType.text !== undefined ? markerType.text : item.type,
-                 size: markerType.size !== undefined ? markerType.size : 1, // Используем size из карты, если есть, иначе 1
+                 size: markerType.size !== undefined ? markerType.size : 1, 
              };
          });
-     }
+    }
 
     function formatTrendLineData(data) {
         return data.map(line => ({
-            data: [
+            data: [ 
                 { time: new Date(line.start_time).getTime() / 1000, value: line.start_price },
                 { time: new Date(line.end_time).getTime() / 1000, value: line.end_price }
             ],
             color: line.color || '#000000',
-            lineWidth: 2,
-            lineStyle: line.lineStyle !== undefined ? line.lineStyle : 0,
-            crosshairMarkerVisible: false,
-            lastValueVisible: false,
-            priceLineVisible: false,
+            lineWidth: 2, 
+            lineStyle: line.lineStyle !== undefined ? line.lineStyle : LightweightCharts.LineStyle.Solid, 
+            crosshairMarkerVisible: false, 
+            lastValueVisible: false, 
+            priceLineVisible: false, 
         }));
     }
 
@@ -182,7 +239,6 @@ window.addEventListener('load', () => {
             'Точки набора': entryPointsSummaryDiv,
             'Другое': otherSummaryDiv
         };
-
         if (summaryData) {
             for (const section in summaryData) {
                 if (sectionContainers[section] && summaryData[section] && Array.isArray(summaryData[section])) {
@@ -197,7 +253,6 @@ window.addEventListener('load', () => {
                                 statusIcon.textContent = item.status ? '✓' : '✗';
                                 const description = document.createElement('span');
                                 description.textContent = item.description;
-
                                 listItem.appendChild(statusIcon);
                                 listItem.appendChild(description);
                                 ulElement.appendChild(listItem);
@@ -225,111 +280,55 @@ window.addEventListener('load', () => {
     }
 
     async function loadChartData(timeframe, backtestDate = null) {
-        console.log(`loadChartData: Начало загрузки данных для таймфрейма: ${timeframe} до даты: ${backtestDate || 'последняя доступная'}`);
         const chartData = await fetchChartData(timeframe, backtestDate);
-        console.log('loadChartData: Данные получены из fetchChartData:', chartData);
 
-        trendLineSeries.forEach(series => {
-            if (chart && series) {
-                chart.removeSeries(series);
-            }
+        serverTrendLineSeries.forEach(series => {
+            if (chart && series) chart.removeSeries(series);
         });
-        trendLineSeries = [];
+        serverTrendLineSeries = [];
+
+        if (candlestickSeries) {
+            if (typeof LightweightCharts.createSeriesMarkers === 'function') {
+                LightweightCharts.createSeriesMarkers(candlestickSeries, []);
+            } else if (typeof candlestickSeries.setMarkers === 'function') {
+                candlestickSeries.setMarkers([]);
+            }
+        }
 
         if (chartData && chartData.ohlcv && chartData.ohlcv.length > 0) {
-            console.log(`loadChartData: Получено ${chartData.ohlcv.length} свечей.`);
             const formattedOhlcv = formatOhlcvData(chartData.ohlcv);
-            if (candlestickSeries && typeof candlestickSeries.setData === 'function') {
-                candlestickSeries.setData(formattedOhlcv);
-                console.log('loadChartData: Данные свечей установлены.');
-            } else {
-                console.error('loadChartData: candlestickSeries недействителен или не имеет метода setData.');
-                displayAnalysisSummary(chartData.analysisSummary);
-                return;
-            }
+            if (candlestickSeries) candlestickSeries.setData(formattedOhlcv);
 
-            if (candlestickSeries && chartData.markers && chartData.markers.length > 0) {
-                console.log(`loadChartData: Получено ${chartData.markers.length} маркеров.`);
+            if (chartData.markers && chartData.markers.length > 0) {
                 const formattedMarkers = formatMarkerData(chartData.markers);
                 if (typeof LightweightCharts.createSeriesMarkers === 'function') {
                     LightweightCharts.createSeriesMarkers(candlestickSeries, formattedMarkers);
-                    console.log('loadChartData: Маркеры установлены через createSeriesMarkers.');
                 } else if (typeof candlestickSeries.setMarkers === 'function') {
-                    console.warn('loadChartData: Используется устаревший метод setMarkers для маркеров.');
                     candlestickSeries.setMarkers(formattedMarkers);
-                    console.log('loadChartData: Маркеры установлены через setMarkers (fallback).');
-                } else {
-                    console.error('loadChartData: Невозможно установить маркеры: createSeriesMarkers и setMarkers недоступны.');
                 }
-            } else if (candlestickSeries) { 
-                 const clearMarkersFunction = LightweightCharts.createSeriesMarkers || candlestickSeries.setMarkers;
-                 if (clearMarkersFunction && typeof clearMarkersFunction === 'function') {
-                    console.log('loadChartData: Нет данных маркеров, очищаем маркеры.');
-                    if (LightweightCharts.createSeriesMarkers) { 
-                        LightweightCharts.createSeriesMarkers(candlestickSeries, []);
-                    } else {
-                        candlestickSeries.setMarkers([]); 
-                    }
-                 } else {
-                    console.error('loadChartData: Невозможно очистить маркеры.');
-                 }
             }
-
 
             if (chartData.trendLines && chartData.trendLines.length > 0) {
-                console.log(`loadChartData: Получено ${chartData.trendLines.length} линий тренда.`);
                 const formattedTrendLines = formatTrendLineData(chartData.trendLines);
-               
-                    formattedTrendLines.forEach(lineData => {
-                        const lineSeries = chart.addSeries(LightweightCharts.LineSeries, {
-                            color: lineData.color,
-                            lineWidth: lineData.lineWidth,
-                            lineStyle: lineData.lineStyle,
-                            crosshairMarkerVisible: lineData.crosshairMarkerVisible,
-                            lastValueVisible: lineData.lastValueVisible,
-                            priceLineVisible: lineData.priceLineVisible,
-                        });
-                        lineSeries.setData(lineData.data);
-                        trendLineSeries.push(lineSeries);
+                formattedTrendLines.forEach(lineDef => {
+                    // Используем chart.addSeries(...) для серверных линий
+                    const lineSeries = chart.addSeries(LightweightCharts.LineSeries, {
+                        color: lineDef.color, 
+                        lineWidth: lineDef.lineWidth,
+                        lineStyle: lineDef.lineStyle, 
+                        crosshairMarkerVisible: lineDef.crosshairMarkerVisible,
+                        lastValueVisible: lineDef.lastValueVisible, 
+                        priceLineVisible: lineDef.priceLineVisible,
                     });
-                    console.log('loadChartData: Серии линий тренда добавлены.');
+                    lineSeries.setData(lineDef.data);
+                    serverTrendLineSeries.push(lineSeries);
+                });
             }
-
-            displayAnalysisSummary(chartData.analysisSummary);
-            console.log('loadChartData: Сводка анализа отображена.');
-
-            chart.timeScale().fitContent();
-            console.log('loadChartData: График подогнан по содержимому.');
+            if (chart && chart.timeScale()) chart.timeScale().fitContent();
         } else {
-            console.warn(`loadChartData: Нет данных для отображения графика для таймфрейма ${timeframe} до даты ${backtestDate || 'последняя доступная'}.`);
-            if (candlestickSeries && typeof candlestickSeries.setData === 'function') {
-                candlestickSeries.setData([]);
-                console.log('loadChartData: График очищен.');
-            }
-             if (candlestickSeries) { 
-                 const clearMarkersFunction = LightweightCharts.createSeriesMarkers || candlestickSeries.setMarkers;
-                 if (clearMarkersFunction && typeof clearMarkersFunction === 'function') { 
-                    console.log('loadChartData: Нет данных графика, очищаем маркеры.');
-                     if (LightweightCharts.createSeriesMarkers) { 
-                        LightweightCharts.createSeriesMarkers(candlestickSeries, []);
-                    } else {
-                        candlestickSeries.setMarkers([]); 
-                    }
-                 } else {
-                    console.error('loadChartData: Невозможно очистить маркеры при отсутствии данных графика.');
-                 }
-            }
-            trendLineSeries.forEach(series => {
-                if (chart && series) {
-                    chart.removeSeries(series);
-                }
-            });
-            trendLineSeries = [];
-            console.log('loadChartData: Серии линий тренда очищены.');
-            displayAnalysisSummary(chartData ? chartData.analysisSummary : null);
-            console.log('loadChartData: Сводка анализа отображена (нет данных графика).');
+            if (candlestickSeries) candlestickSeries.setData([]);
         }
-        console.log(`loadChartData: Завершение загрузки данных для таймфрейма: ${timeframe} до даты: ${backtestDate || 'последняя доступная'}`);
+        displayAnalysisSummary(chartData ? chartData.analysisSummary : null);
     }
 
     if (timeframeSelect) {
@@ -339,7 +338,6 @@ window.addEventListener('load', () => {
             loadChartData(selectedTimeframe, selectedDate);
         });
     }
-
     if (backtestDateInput) {
         backtestDateInput.addEventListener('change', () => {
             const selectedTimeframe = timeframeSelect.value;
@@ -347,15 +345,17 @@ window.addEventListener('load', () => {
             loadChartData(selectedTimeframe, selectedDate);
         });
     }
+    
+    setActiveTool('pointer'); 
 
-    const defaultTimeframe = timeframeSelect ? timeframeSelect.value : '1h';
-    loadChartData(defaultTimeframe);
+    loadChartData(timeframeSelect ? timeframeSelect.value : '1h');
 
-    new ResizeObserver(entries => {
-        if (entries.length === 0 || entries[0].target !== chartContainer) {
-            return;
-        }
+    const resizeObserver = new ResizeObserver(entries => {
+        if (entries.length === 0 || entries[0].target !== chartContainerWrapper) return; 
         const newRect = entries[0].contentRect;
-        chart.applyOptions({ height: newRect.height, width: newRect.width });
-    }).observe(chartContainer);
+        if (chart) {
+             chart.applyOptions({ height: newRect.height, width: newRect.width });
+        }
+    });
+    resizeObserver.observe(chartContainerWrapper); 
 });

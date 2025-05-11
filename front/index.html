@@ -6,16 +6,90 @@
     <title>Торговый график</title>
     <script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
     <link rel="stylesheet" href="/css/styles.css">
+    <style>
+        /* Основной контейнер для графика и панели инструментов */
+        .chart-area-wrapper {
+            position: relative; /* Для позиционирования панели инструментов */
+            width: 100%;
+            height: 100%;
+            display: flex; /* Располагаем панель и график рядом */
+        }
+
+        /* Вертикальная панель инструментов */
+        .drawing-toolbar-vertical {
+            width: 48px; /* Ширина панели */
+            background-color: #f0f3f8; /* Светлый фон, как у TradingView */
+            border-right: 1px solid #e0e3eb;
+            padding-top: 10px;
+            padding-bottom: 10px;
+            display: flex;
+            flex-direction: column; /* Иконки друг под другом */
+            align-items: center;
+            gap: 8px; /* Пространство между кнопками */
+            flex-shrink: 0; /* Панель не будет сжиматься */
+        }
+
+        .drawing-tool-button-vertical {
+            width: 38px;
+            height: 38px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 4px;
+            cursor: pointer;
+            color: #50565E; /* Цвет иконок */
+            background-color: transparent;
+            border: 1px solid transparent; /* Для консистентности размера */
+            transition: background-color 0.2s ease-in-out, border-color 0.2s ease-in-out;
+        }
+
+        .drawing-tool-button-vertical:hover {
+            background-color: #d1d5db; /* Светло-серый при наведении */
+            color: #131722;
+        }
+
+        .drawing-tool-button-vertical.active {
+            background-color: #D1E8FF; /* Голубой для активной кнопки, как в TradingView */
+            color: #005EEC; /* Синий цвет иконки для активного состояния */
+            border: 1px solid #005EEC;
+        }
+        
+        .drawing-tool-button-vertical i {
+            font-size: 18px; /* Размер иконок */
+        }
+
+        /* Контейнер для самого графика, чтобы он занимал оставшееся место */
+        #chart-container-wrapper {
+            flex-grow: 1; /* График занимает все доступное пространство */
+            height: 100%;
+            overflow: hidden; /* Предотвращаем выход графика за пределы */
+        }
+         /* Стили для основного окна приложения */
+        .app-window {
+            display: flex;
+            flex-direction: row; /* aside слева, main справа */
+        }
+        aside {
+             /* Стили для левой панели настроек остаются прежними */
+        }
+        main {
+            /* main теперь будет содержать chart-area-wrapper */
+            flex-grow: 1;
+            display: flex; /* Для корректного отображения chart-area-wrapper */
+            overflow: hidden;
+        }
+    </style>
 </head>
 <body class="bg-white text-black flex h-screen overflow-hidden">
     <div class="app-window flex flex-grow">
-        <aside class="w-64 p-4 flex flex-col flex-shrink-0 bg-white text-black overflow-y-auto">
+        <aside class="w-64 p-4 flex flex-col flex-shrink-0 bg-white text-black overflow-y-auto border-r border-gray-300">
             <h2 class="text-xl font-bold mb-4 text-black">Настройки</h2>
 
             <div class="mb-6">
-                <label for="timeframe-select" class="block text-gray-700 mb-2">Таймфрейм:</label>
-                <select id="timeframe-select" class="w-full bg-gray-200 text-black rounded px-3 py-1 cursor-pointer focus:outline-none focus:ring focus:border-blue-300">
+                <label for="timeframe-select" class="block text-sm font-medium text-gray-700 mb-1">Таймфрейм:</label>
+                <select id="timeframe-select" class="w-full bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block p-2">
                     <option value="1m">1m</option>
                     <option value="3m">3m</option>
                     <option value="5m">5m</option>
@@ -29,46 +103,54 @@
             </div>
 
             <div class="mb-6">
-                <label for="backtest-date" class="block text-gray-700 mb-2">Дата бэктеста:</label>
-                <input type="date" id="backtest-date" class="w-full bg-gray-200 text-black rounded px-3 py-1 cursor-pointer focus:outline-none focus:ring focus:border-blue-300">
+                <label for="backtest-date" class="block text-sm font-medium text-gray-700 mb-1">Дата бэктеста:</label>
+                <input type="date" id="backtest-date" class="w-full bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block p-2">
+            </div>
+            
+            <div class="mb-6">
+                 <h3 class="text-md font-semibold mb-2 text-gray-700">Управление линиями:</h3>
+                <button id="clear-drawn-lines" class="w-full bg-red-500 hover:bg-red-600 text-white text-sm font-medium py-2 px-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-opacity-50 flex items-center justify-center">
+                    <i class="fas fa-trash-alt mr-2"></i> Очистить мои линии
+                </button>
             </div>
 
-
-            <div id="analysis-summary-general" class="mb-6">
-                <h3 class="text-lg font-semibold mb-2 text-gray-800">Общая информация:</h3>
-                <ul class="text-sm text-gray-700"></ul>
+            <div id="analysis-summary-general" class="mb-4">
+                <h3 class="text-md font-semibold mb-1 text-gray-700">Общая информация:</h3>
+                <ul class="text-xs text-gray-600 space-y-1"></ul>
             </div>
-
-            <div id="analysis-summary-detailed" class="mb-6">
-                <h3 class="text-lg font-semibold mb-2 text-gray-800">Подробная информация:</h3>
-                 <ul class="text-sm text-gray-700"></ul>
+            <div id="analysis-summary-detailed" class="mb-4">
+                <h3 class="text-md font-semibold mb-1 text-gray-700">Подробная информация:</h3>
+                 <ul class="text-xs text-gray-600 space-y-1"></ul>
             </div>
-
-             <div id="analysis-summary-targets" class="mb-6">
-                <h3 class="text-lg font-semibold mb-2 text-gray-800">Цели:</h3>
-                 <ul class="text-sm text-gray-700"></ul>
+             <div id="analysis-summary-targets" class="mb-4">
+                <h3 class="text-md font-semibold mb-1 text-gray-700">Цели:</h3>
+                 <ul class="text-xs text-gray-600 space-y-1"></ul>
             </div>
-
-             <div id="analysis-summary-entry-points" class="mb-6">
-                <h3 class="text-lg font-semibold mb-2 text-gray-800">Точки набора:</h3>
-                 <ul class="text-sm text-gray-700"></ul>
+             <div id="analysis-summary-entry-points" class="mb-4">
+                <h3 class="text-md font-semibold mb-1 text-gray-700">Точки набора:</h3>
+                 <ul class="text-xs text-gray-600 space-y-1"></ul>
             </div>
-
-             <div id="analysis-summary-other" class="mb-6">
-                <h3 class="text-lg font-semibold mb-2 text-gray-800">Другое:</h3>
-                 <ul class="text-sm text-gray-700"></ul>
+             <div id="analysis-summary-other" class="mb-4">
+                <h3 class="text-md font-semibold mb-1 text-gray-700">Другое:</h3>
+                 <ul class="text-xs text-gray-600 space-y-1"></ul>
             </div>
+        </aside>
 
-
-            </aside>
-
-        <main class="flex-grow overflow-hidden h-full bg-gray-800 rounded-l-lg"> <div id="chart-container" class="w-full h-full">
+        <main class="flex-grow flex overflow-hidden bg-gray-100"> 
+            <div class="drawing-toolbar-vertical">
+                <button id="tool-pointer" class="drawing-tool-button-vertical" title="Курсор">
+                    <i class="fas fa-mouse-pointer"></i>
+                </button>
+                <button id="tool-trendline" class="drawing-tool-button-vertical" title="Линия тренда">
+                    <i class="fas fa-slash"></i> 
+                </button>
                 </div>
+            
+            <div id="chart-container-wrapper" class="bg-white">
+                <div id="chart-container" class="w-full h-full"></div>
+            </div>
         </main>
     </div>
-
-
     <script src="/js/script.js"></script>
-
 </body>
 </html>
