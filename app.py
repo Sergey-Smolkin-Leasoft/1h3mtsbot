@@ -1,3 +1,4 @@
+# app.py
 import os
 import sys
 from flask import Flask, jsonify, render_template, send_from_directory, request
@@ -15,8 +16,8 @@ try:
         find_swing_points,
         analyze_market_structure_points, 
         determine_overall_market_context, 
-        determine_trend_lines_v2,      
-        summarize_analysis
+        determine_trend_lines_v2, # Используем эту функцию для линий
+        summarize_analysis # Эта функция теперь будет использовать данные линий
     )
     from ts_logic.fractal_analyzer import analyze_fractal_setups
 
@@ -32,8 +33,6 @@ INTERVAL_MAP_API = {
     "4h": "4h", "8h": "8h", "1d": "1day", "1w": "1week", "1M": "1month"
 }
 
-# Список таймфреймов, для которых будет выполняться полный анализ
-# (включая линии тренда, маркеры HH/HL, сессионные фракталы и сводку)
 ANALYSIS_ENABLED_TIMEFRAMES = ['1h', '4h'] 
 
 
@@ -50,7 +49,6 @@ def get_chart_data():
     symbol = settings.DEFAULT_SYMBOL
     interval_from_request = request.args.get('interval', settings.CONTEXT_TIMEFRAME)
     api_interval = INTERVAL_MAP_API.get(interval_from_request, interval_from_request)
-    # print(f"API: Запрошен интервал '{interval_from_request}', используется для API '{api_interval}'")
 
     end_date_str = request.args.get('endDate')
     end_date = None
@@ -58,16 +56,13 @@ def get_chart_data():
         try:
             end_date = datetime.strptime(end_date_str, '%Y-%m-%d')
             end_date = end_date.replace(hour=23, minute=59, second=59, tzinfo=timezone.utc)
-            # print(f"API: Запрошена дата окончания бэктеста: {end_date}")
         except ValueError:
-            # print(f"API: Некорректный формат даты endDate: {end_date_str}. Игнорируется.")
             end_date = None
 
     api_end_date = end_date if end_date else datetime.now(timezone.utc)
     days_to_fetch = 60 
     api_start_date = api_end_date - timedelta(days=days_to_fetch)
 
-    # print(f"API: Запрос данных для графика {symbol} ({api_interval}) в диапазоне: {api_start_date.strftime('%Y-%m-%d %H:%M:%S %Z')} - {api_end_date.strftime('%Y-%m-%d %H:%M:%S %Z')}...")
     market_data_df = get_forex_data(
         symbol=symbol, interval=api_interval,
         start_date=api_start_date, end_date=api_end_date
@@ -75,7 +70,6 @@ def get_chart_data():
 
     empty_summary = {"Общая информация": [], "Подробная информация": [], "Цели": [], "Точки набора": [], "Другое": []}
     if market_data_df is None or market_data_df.empty:
-        # print(f"API: Не удалось получить данные OHLCV для таймфрейма {api_interval} в запрошенном диапазоне.")
         return jsonify({"ohlcv": [], "markers": [], "trendLines": [], "analysisSummary": empty_summary}), 500
 
     if market_data_df.index.tzinfo is None:
@@ -86,9 +80,7 @@ def get_chart_data():
     market_data_df_filtered = market_data_df
     if end_date: 
         market_data_df_filtered = market_data_df[market_data_df.index <= end_date]
-        # print(f"API: Отфильтровано данных до точной даты бэктеста {end_date}: {len(market_data_df_filtered)} свечей.")
         if market_data_df_filtered.empty:
-            # print(f"API: Нет данных до даты {end_date_str} после финальной фильтрации.")
             return jsonify({"ohlcv": [], "markers": [], "trendLines": [], "analysisSummary": empty_summary}), 200
     
     ohlcv_data = []
@@ -110,34 +102,22 @@ def get_chart_data():
     if not market_data_df_filtered.empty:
         last_df_timestamp_for_trendlines = market_data_df_filtered.index[-1]
         if not isinstance(last_df_timestamp_for_trendlines, pd.Timestamp):
-            # print(f"API: Внимание! last_df_timestamp_for_trendlines не является pd.Timestamp: {type(last_df_timestamp_for_trendlines)}")
             last_df_timestamp_for_trendlines = None
-        
         data_for_offset_calculation = market_data_df_filtered 
 
-
-    # Измененное условие: анализ выполняется, если текущий таймфрейм есть в списке ANALYSIS_ENABLED_TIMEFRAMES
     if interval_from_request in ANALYSIS_ENABLED_TIMEFRAMES and not market_data_df_filtered.empty:
         try:
             current_processing_datetime = market_data_df_filtered.index[-1].to_pydatetime()
-            
-            # Параметр N для свингов может быть разным для разных таймфреймов.
-            # Пока используем один и тот же из settings.SWING_POINT_N.
-            # Для более тонкой настройки можно добавить логику выбора N в зависимости от interval_from_request.
             swing_n_for_current_tf = settings.SWING_POINT_N 
-            # Аналогично для SESSION_FRACTAL_N, если он будет использоваться на разных ТФ для сессий.
-            # settings.SESSION_FRACTAL_N в fractal_analyzer.py используется напрямую.
-
+            
             swing_highs, swing_lows = find_swing_points(market_data_df_filtered, n=swing_n_for_current_tf)
             structure_points = analyze_market_structure_points(swing_highs, swing_lows)
-            overall_context = determine_overall_market_context(structure_points)
-            # print(f"API: Общий рыночный контекст (из HH/HL): {overall_context} для {interval_from_request}")
+            overall_context = determine_overall_market_context(structure_points) # Контекст по HH/HL
 
             all_points_for_plot = []
             if structure_points: 
                 all_points_for_plot.extend(structure_points)
             
-            # Сессионный анализ может быть менее релевантен для старших ТФ, но код его выполнит.
             session_fractal_and_setup_points = analyze_fractal_setups(market_data_df_filtered, current_processing_datetime)
             if session_fractal_and_setup_points:
                 all_points_for_plot.extend(session_fractal_and_setup_points)
@@ -160,11 +140,9 @@ def get_chart_data():
                     "price": point['price'],
                 })
 
+            # Рассчитываем линии тренда
             if last_df_timestamp_for_trendlines and data_for_offset_calculation is not None and not data_for_offset_calculation.empty: 
                  points_window = settings.TRENDLINE_POINTS_WINDOW_SIZE if hasattr(settings, 'TRENDLINE_POINTS_WINDOW_SIZE') else 5
-                 # Можно добавить адаптацию points_window для разных ТФ, если нужно
-                 # if interval_from_request == '4h': points_window = 3 # Например
-                 
                  trend_lines_data = determine_trend_lines_v2(
                      swing_highs, 
                      swing_lows, 
@@ -172,15 +150,14 @@ def get_chart_data():
                      data_for_offset_calculation,
                      points_window_size=points_window
                  )
-                 # print(f"API: determine_trend_lines_v2 вернула {len(trend_lines_data)} линий для ТФ {interval_from_request}.")
-            # else:
-                # print(f"API: last_df_timestamp_for_trendlines или data_for_offset_calculation не определены, линии тренда не будут рассчитаны для ТФ {interval_from_request}.")
-
+            
+            # Формируем сводку, передавая в нее данные о линиях тренда
             analysis_summary_data = summarize_analysis(
                 market_data_df_filtered,
                 structure_points, 
                 session_fractal_and_setup_points if session_fractal_and_setup_points else [],
-                overall_context
+                overall_context,
+                trend_lines_data # Передаем рассчитанные линии для определения контекста канала
             )
         except Exception as e_analysis:
             print(f"API: Ошибка во время выполнения аналитики для {interval_from_request}: {e_analysis}")
@@ -193,9 +170,6 @@ def get_chart_data():
              analysis_summary_data["Общая информация"].append({'description': default_text, 'status': False})
         elif market_data_df_filtered.empty:
              analysis_summary_data["Общая информация"].append({'description': "Нет данных для анализа.", 'status': False})
-        # print(f"API: Полный анализ пропущен для таймфрейма {interval_from_request}.")
-
-    # print(f"API: Подготовлено {len(ohlcv_data)} свечей, {len(marker_data)} маркеров и {len(trend_lines_data)} линий тренда для ТФ {interval_from_request} (до {end_date_str or 'последняя дата'}).")
 
     return jsonify({
         "ohlcv": ohlcv_data,
