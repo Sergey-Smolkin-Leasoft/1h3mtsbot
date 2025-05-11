@@ -20,7 +20,7 @@
         /* Вертикальная панель инструментов */
         .drawing-toolbar-vertical {
             width: 48px; /* Ширина панели */
-            background-color: #f0f3f8; /* Светлый фон */
+            background-color: #f0f3f8; /* Светлый фон, как у TradingView */
             border-right: 1px solid #e0e3eb;
             padding-top: 10px;
             padding-bottom: 10px;
@@ -51,7 +51,7 @@
         }
 
         .drawing-tool-button-vertical.active {
-            background-color: #D1E8FF; /* Голубой для активной кнопки */
+            background-color: #D1E8FF; /* Голубой для активной кнопки, как в TradingView */
             color: #005EEC; /* Синий цвет иконки для активного состояния */
             border: 1px solid #005EEC;
         }
@@ -60,18 +60,24 @@
             font-size: 18px; /* Размер иконок */
         }
 
+        /* Контейнер для самого графика, чтобы он занимал оставшееся место */
         #chart-container-wrapper {
-            flex-grow: 1; 
+            flex-grow: 1; /* График занимает все доступное пространство */
             height: 100%;
-            overflow: hidden; 
+            overflow: hidden; /* Предотвращаем выход графика за пределы */
         }
+         /* Стили для основного окна приложения */
         .app-window {
             display: flex;
-            flex-direction: row; 
+            flex-direction: row; /* aside слева, main справа */
+        }
+        aside {
+             /* Стили для левой панели настроек остаются прежними */
         }
         main {
+            /* main теперь будет содержать chart-area-wrapper */
             flex-grow: 1;
-            display: flex; 
+            display: flex; /* Для корректного отображения chart-area-wrapper */
             overflow: hidden;
         }
     </style>
@@ -109,15 +115,8 @@
 
             <div id="analysis-context-section" class="mb-4">
                 <h3 class="text-md font-semibold mb-1 text-gray-700">Context:</h3>
-<<<<<<< HEAD
                 <ul class="text-xs text-gray-600 space-y-1"></ul> </div>
             </aside>
-=======
-                <ul class="text-xs text-gray-600 space-y-1">
-                    </ul>
-            </div>
-        </aside>
->>>>>>> ac98f31a525919939e1e15ac2b9eb32709885a88
 
         <main class="flex-grow flex overflow-hidden bg-gray-100"> 
             <div class="drawing-toolbar-vertical">
