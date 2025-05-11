@@ -1,8 +1,8 @@
 # ts_logic/context_analyzer_1h.py
 import pandas as pd
-from configs import settings # Для доступа к SWING_POINT_N
-from datetime import time, timedelta, datetime as dt_datetime # Импортируем для анализа сессий и времени
-import numpy as np # Для np.isclose
+from configs import settings 
+from datetime import time, timedelta, datetime as dt_datetime 
+import numpy as np 
 
 # Соответствие стилей линий числовым значениям Lightweight Charts
 LINE_STYLE_SOLID = 0
@@ -19,6 +19,7 @@ def find_swing_points(df: pd.DataFrame, n: int = settings.SWING_POINT_N):
     swing_lows = []
 
     if not isinstance(df, pd.DataFrame) or df.empty:
+        # print("find_swing_points: DataFrame is empty or not a DataFrame.")
         return swing_highs, swing_lows
 
     if len(df) < (2 * n + 1):
@@ -30,11 +31,13 @@ def find_swing_points(df: pd.DataFrame, n: int = settings.SWING_POINT_N):
         print(f"context_analyzer: DataFrame должен содержать колонки {required_cols}.")
         return swing_highs, swing_lows
 
+    # Для производительности работаем с NumPy arrays
     high_prices = df['high'].values
     low_prices = df['low'].values
-    datetimes = df.index
+    datetimes = df.index # pd.DatetimeIndex
 
     for i in range(n, len(df) - n):
+        # Проверка на Swing High
         is_swing_high = True
         current_high = high_prices[i]
         for j in range(1, n + 1):
@@ -42,8 +45,9 @@ def find_swing_points(df: pd.DataFrame, n: int = settings.SWING_POINT_N):
                 is_swing_high = False
                 break
         if is_swing_high:
-            swing_highs.append({'time': datetimes[i], 'price': current_high, 'type': 'H_SWING'}) # Добавляем тип для ясности
+            swing_highs.append({'time': datetimes[i], 'price': current_high, 'type': 'H_SWING'})
 
+        # Проверка на Swing Low
         is_swing_low = True
         current_low = low_prices[i]
         for j in range(1, n + 1):
@@ -51,32 +55,30 @@ def find_swing_points(df: pd.DataFrame, n: int = settings.SWING_POINT_N):
                 is_swing_low = False
                 break
         if is_swing_low:
-            swing_lows.append({'time': datetimes[i], 'price': current_low, 'type': 'L_SWING'}) # Добавляем тип для ясности
+            swing_lows.append({'time': datetimes[i], 'price': current_low, 'type': 'L_SWING'})
     return swing_highs, swing_lows
 
 def analyze_market_structure_points(swing_highs: list, swing_lows: list):
     """
     Анализирует последовательность свингов для определения HH, HL, LH, LL.
-    Эта функция теперь будет работать с более "мажорными" свингами, если SWING_POINT_N увеличено.
-    Эта функция используется для определения маркеров на графике и для текстовой сводки,
-    но НЕ для рисования линий тренда в новой логике.
     """
     structure_points = []
     if not swing_highs and not swing_lows:
         return structure_points
 
     all_swings_raw = []
-    # Используем тип, присвоенный в find_swing_points, но для логики HH/HL нужен 'high'/'low'
     for sh in swing_highs:
-        all_swings_raw.append({'time': sh['time'], 'price': sh['price'], 'swing_type': 'high'}) # swing_type для этой функции
+        all_swings_raw.append({'time': sh['time'], 'price': sh['price'], 'swing_type': 'high'}) 
     for sl in swing_lows:
-        all_swings_raw.append({'time': sl['time'], 'price': sl['price'], 'swing_type': 'low'}) # swing_type для этой функции
+        all_swings_raw.append({'time': sl['time'], 'price': sl['price'], 'swing_type': 'low'})
 
     if not all_swings_raw:
         return structure_points
 
-    all_swings_raw.sort(key=lambda x: x['time'])
+    all_swings_raw.sort(key=lambda x: x['time']) # Сортируем все свинги по времени
 
+    # Логика определения HH, HL, LH, LL
+    # Это упрощенная версия, может потребовать доработки для сложных случаев
     temp_structure_points = []
     last_h_info = None
     last_l_info = None
@@ -89,56 +91,59 @@ def analyze_market_structure_points(swing_highs: list, swing_lows: list):
 
         if current_swing_type == 'high':
             if last_h_info:
-                if current_price > last_h_info['price']:
-                    point_type_determined = "HH"
-                elif current_price < last_h_info['price']:
-                    point_type_determined = "LH"
-                else:
-                    point_type_determined = "H"
+                if current_price > last_h_info['price']: point_type_determined = "HH"
+                elif current_price < last_h_info['price']: point_type_determined = "LH"
+                else: point_type_determined = "H" # Равный High
             else:
-                point_type_determined = "H"
+                point_type_determined = "H" # Первый High
             last_h_info = {'time': current_time, 'price': current_price, 'type': point_type_determined}
-            if point_type_determined:
-                 temp_structure_points.append(last_h_info)
+            if point_type_determined: temp_structure_points.append(last_h_info)
+        
         elif current_swing_type == 'low':
             if last_l_info:
-                if current_price < last_l_info['price']:
-                    point_type_determined = "LL"
-                elif current_price > last_l_info['price']:
-                    point_type_determined = "HL"
-                else:
-                    point_type_determined = "L"
+                if current_price < last_l_info['price']: point_type_determined = "LL"
+                elif current_price > last_l_info['price']: point_type_determined = "HL"
+                else: point_type_determined = "L" # Равный Low
             else:
-                point_type_determined = "L"
+                point_type_determined = "L" # Первый Low
             last_l_info = {'time': current_time, 'price': current_price, 'type': point_type_determined}
-            if point_type_determined:
-                temp_structure_points.append(last_l_info)
+            if point_type_determined: temp_structure_points.append(last_l_info)
 
-    if not temp_structure_points:
-        return []
+    if not temp_structure_points: return []
 
+    # Фильтрация для удаления последовательных одинаковых типов (например, HH -> HH)
+    # или для более сложной логики чередования H и L
+    # В данном примере просто возвращаем все определенные точки, отсортированные по времени
     temp_structure_points.sort(key=lambda x: x['time'])
-    if not temp_structure_points:
-        return []
+    
+    # Простая фильтрация: если подряд идут точки одного типа (H или L), оставляем только последнюю или самую экстремальную
+    # Эта логика может быть усложнена
+    if not temp_structure_points: return []
 
     structure_points.append(temp_structure_points[0])
     for i in range(1, len(temp_structure_points)):
         current_sp = temp_structure_points[i]
         prev_sp = structure_points[-1]
+        
+        # Если тип такой же (например, оба H или HH), и цена не сильно отличается, можем пропустить
+        # Или если это чередующиеся типы (H, L, H, L...)
         is_prev_high_type = 'H' in prev_sp['type']
         is_curr_high_type = 'H' in current_sp['type']
-        is_prev_low_type = 'L' in prev_sp['type']
-        is_curr_low_type = 'L' in current_sp['type']
+        is_prev_low_type = 'L' in prev_sp['type'] and not is_prev_high_type # Уточнение для L, LL, HL
+        is_curr_low_type = 'L' in current_sp['type'] and not is_curr_high_type # Уточнение для L, LL, HL
 
         if (is_prev_high_type and is_curr_high_type) or \
            (is_prev_low_type and is_curr_low_type):
-            if prev_sp['type'] == current_sp['type']:
-                if abs(prev_sp['price'] - current_sp['price']) > 1e-9 or prev_sp['time'] != current_sp['time']:
-                    structure_points.append(current_sp)
-            else:
-                 structure_points.append(current_sp)
-        else:
+            # Если один тип (например, H и HH), и новый экстремальнее или позже, заменяем
+            if (is_curr_high_type and current_sp['price'] >= prev_sp['price']) or \
+               (is_curr_low_type and current_sp['price'] <= prev_sp['price']):
+                structure_points[-1] = current_sp # Заменяем предыдущий, если новый "лучше"
+            elif current_sp['time'] > prev_sp['time'] and prev_sp['type'] != current_sp['type']: # Если тип изменился (H -> HH)
+                structure_points.append(current_sp)
+            # Иначе (если новый не лучше и тип тот же) - не добавляем
+        else: # Если типы разные (H -> L), добавляем
             structure_points.append(current_sp)
+            
     return structure_points
 
 
@@ -146,73 +151,68 @@ def determine_overall_market_context(structure_points: list):
     """
     Определяет общий рыночный контекст (LONG, SHORT, NEUTRAL)
     на основе последних нескольких точек структуры (HH, HL, LH, LL).
-    Используется для текстовой сводки.
     """
     if not structure_points:
-        return "NEUTRAL/RANGING (нет данных о структуре)"
+        return "NEUTRAL (нет данных о структуре)"
 
+    # Фильтруем только точки, определяющие тренд
     trend_defining_points = [p for p in structure_points if p['type'] in ['HH', 'HL', 'LH', 'LL']]
 
     if len(trend_defining_points) < 2:
-         if len(trend_defining_points) == 1:
-             last_tdp_single = trend_defining_points[0]
-             if last_tdp_single['type'] == 'HH': return "NEUTRAL (Первый BOS вверх, ожидание HL)"
-             elif last_tdp_single['type'] == 'LL': return "NEUTRAL (Первый BOS вниз, ожидание LH)"
-             return "NEUTRAL/RANGING (недостаточно трендовых точек)"
-         if len(structure_points) >=2:
+        # Если есть только одна трендовая точка
+        if len(trend_defining_points) == 1:
+            last_tdp_single = trend_defining_points[0]
+            if last_tdp_single['type'] == 'HH': return "Потенциальный LONG (Первый HH, ожидание HL)"
+            elif last_tdp_single['type'] == 'LL': return "Потенциальный SHORT (Первый LL, ожидание LH)"
+        # Если трендовых точек нет, но есть обычные H/L
+        elif len(structure_points) >=2:
              p1 = structure_points[-1]
              p0 = structure_points[-2]
              if p1['type'] == 'H' and p0['type'] == 'L' and p1['price'] > p0['price']: return "NEUTRAL (L -> H)"
              if p1['type'] == 'L' and p0['type'] == 'H' and p1['price'] < p0['price']: return "NEUTRAL (H -> L)"
-         return "NEUTRAL/RANGING (недостаточно трендовых точек)"
+        return "NEUTRAL (недостаточно трендовых точек)"
 
     last_p = trend_defining_points[-1]
     second_last_p = trend_defining_points[-2]
-    context = "NEUTRAL/RANGING (неопределенная структура)"
+    context = "NEUTRAL (неопределенная структура)"
 
-    if last_p['type'] == 'HH':
-        if second_last_p['type'] == 'HL':
-            context = "LONG (Тренд вверх: HH после HL)"
-        elif second_last_p['type'] in ['LL', 'LH', 'L']:
-             prior_lhs_or_hs = [p for p in structure_points[:-1] if p['type'] in ['LH', 'H']]
-             if prior_lhs_or_hs and last_p['price'] > prior_lhs_or_hs[-1]['price']:
-                  context = "LONG (BOS: HH пробил предыдущий LH/H)"
-             else:
-                  context = "NEUTRAL (HH не пробил ключевой LH/H, ожидание HL/дальнейшего BOS)"
-        else: context = "NEUTRAL (HH сформирован, но последовательность неясна)"
-    elif last_p['type'] == 'HL':
-        if second_last_p['type'] == 'HH':
-            context = "LONG (Тренд вверх: коррекция HL после HH)"
-        else: context = "NEUTRAL/RANGING (Формируется HL без предшествующего HH)"
-    elif last_p['type'] == 'LL':
-        if second_last_p['type'] == 'LH':
-            context = "SHORT (Тренд вниз: LL после LH)"
-        elif second_last_p['type'] in ['HH', 'HL', 'H']:
-             prior_hls_or_ls = [p for p in structure_points[:-1] if p['type'] in ['HL', 'L']]
-             if prior_hls_or_ls and last_p['price'] < prior_hls_or_ls[-1]['price']:
-                    context = "SHORT (BOS: LL пробил предыдущий HL/L)"
-             else:
-                    context = "NEUTRAL (LL не пробил ключевой HL/L, ожидание LH/дальнейшего BOS)"
-        else: context = "NEUTRAL (LL сформирован, но последовательность неясна)"
-    elif last_p['type'] == 'LH':
-        if second_last_p['type'] == 'LL':
-            context = "SHORT (Тренд вниз: коррекция LH после LL)"
-        else: context = "NEUTRAL/RANGING (Формируется LH без предшествующего LL)"
-
-    if "NEUTRAL" in context or "RANGING" in context:
-         if len(trend_defining_points) >= 2 :
-            p1 = trend_defining_points[-1]; p0 = trend_defining_points[-2]
-            if (p1['type'] == 'LH' and p0['type'] == 'HL') or \
-               (p1['type'] == 'HL' and p0['type'] == 'LH'):
-                context = "NEUTRAL/RANGING (Сужение/консолидация)"
-            elif (p1['type'] == 'HH' and p0['type'] == 'LL') or \
-                 (p1['type'] == 'LL' and p0['type'] == 'HH'):
-                 context = "NEUTRAL/RANGING (Расширение диапазона)"
+    # Классический анализ тренда
+    if last_p['type'] == 'HH' and second_last_p['type'] == 'HL':
+        context = "LONG (HH после HL)"
+    elif last_p['type'] == 'LL' and second_last_p['type'] == 'LH':
+        context = "SHORT (LL после LH)"
+    elif last_p['type'] == 'HL' and second_last_p['type'] == 'HH':
+        context = "LONG (Коррекция HL после HH)"
+    elif last_p['type'] == 'LH' and second_last_p['type'] == 'LL':
+        context = "SHORT (Коррекция LH после LL)"
+    # Ситуации смены тренда (Break of Structure - BOS)
+    elif last_p['type'] == 'HH': # Новый HH мог пробить предыдущий LH
+        # Ищем предыдущий значимый LH или H
+        prev_highs = [p for p in trend_defining_points[:-1] if p['type'] in ['LH', 'H']]
+        if prev_highs and last_p['price'] > prev_highs[-1]['price']:
+            context = "LONG (BOS: HH пробил LH/H)"
+        else:
+            context = "NEUTRAL (HH без ясного BOS)"
+    elif last_p['type'] == 'LL': # Новый LL мог пробить предыдущий HL
+        # Ищем предыдущий значимый HL или L
+        prev_lows = [p for p in trend_defining_points[:-1] if p['type'] in ['HL', 'L']]
+        if prev_lows and last_p['price'] < prev_lows[-1]['price']:
+            context = "SHORT (BOS: LL пробил HL/L)"
+        else:
+            context = "NEUTRAL (LL без ясного BOS)"
+    # Другие случаи могут указывать на рендж или консолидацию
+    elif (last_p['type'] == 'LH' and second_last_p['type'] == 'HL') or \
+         (last_p['type'] == 'HL' and second_last_p['type'] == 'LH'):
+        context = "NEUTRAL (Рендж/Консолидация)"
+        
     return context
 
 
 def get_line_slope(p_start_time, p_start_price, p_end_time, p_end_price):
     """Рассчитывает наклон линии."""
+    if not isinstance(p_start_time, pd.Timestamp) or not isinstance(p_end_time, pd.Timestamp):
+        return 0 # или np.nan, или вызвать ошибку
+
     if p_start_time < p_end_time:
         time_delta_seconds = (p_end_time - p_start_time).total_seconds()
         price_delta = p_end_price - p_start_price
@@ -220,28 +220,42 @@ def get_line_slope(p_start_time, p_start_price, p_end_time, p_end_price):
             return price_delta / time_delta_seconds
     elif p_start_time == p_end_time: 
         return np.inf if p_end_price > p_start_price else (-np.inf if p_end_price < p_start_price else 0) 
-    return 0 
+    return 0 # Наклон для линии, идущей назад во времени, или если время старта > время конца
 
 
 def determine_trend_channel_context(trend_lines_data: list):
     """
     Определяет контекст канала на основе наклонов линий тренда.
+    Возвращает строку с описанием.
     """
     if not trend_lines_data or len(trend_lines_data) < 2:
-        return "Контекст канала: Неопределенный (недостаточно линий)"
+        return "Неопределенный (недостаточно линий)"
 
-    support_line = next((line for line in trend_lines_data if line['color'] == '#26A69A'), None)
-    resistance_line = next((line for line in trend_lines_data if line['color'] == '#EF5350'), None)
+    support_line = next((line for line in trend_lines_data if line.get('color') == '#26A69A'), None)
+    resistance_line = next((line for line in trend_lines_data if line.get('color') == '#EF5350'), None)
 
     if not support_line or not resistance_line:
-        return "Контекст канала: Неопределенный (отсутствует линия поддержки или сопротивления)"
-
-    slope_support = get_line_slope(support_line['start_time'], support_line['start_price'], 
-                                   support_line['end_time'], support_line['end_price'])
-    slope_resistance = get_line_slope(resistance_line['start_time'], resistance_line['start_price'], 
-                                      resistance_line['end_time'], resistance_line['end_price'])
+        return "Неопределенный (нет линии поддержки/сопротивления)"
     
-    slope_tolerance = 0.00001 
+    # Убедимся, что время в правильном формате (pd.Timestamp)
+    try:
+        s_start_time = pd.Timestamp(support_line['start_time'])
+        s_end_time = pd.Timestamp(support_line['end_time'])
+        r_start_time = pd.Timestamp(resistance_line['start_time'])
+        r_end_time = pd.Timestamp(resistance_line['end_time'])
+    except Exception as e:
+        print(f"Ошибка конвертации времени для линий тренда: {e}")
+        return "Ошибка времени в линиях"
+
+
+    slope_support = get_line_slope(s_start_time, support_line['start_price'], 
+                                   s_end_time, support_line['end_price'])
+    slope_resistance = get_line_slope(r_start_time, resistance_line['start_price'], 
+                                      r_end_time, resistance_line['end_price'])
+    
+    # Допуск для определения "плоской" линии
+    # Этот параметр можно вынести в settings
+    slope_tolerance = settings.TRENDLINE_SLOPE_TOLERANCE if hasattr(settings, 'TRENDLINE_SLOPE_TOLERANCE') else 0.000005 
 
     is_support_up = slope_support > slope_tolerance
     is_support_down = slope_support < -slope_tolerance
@@ -251,224 +265,183 @@ def determine_trend_channel_context(trend_lines_data: list):
     is_resistance_down = slope_resistance < -slope_tolerance
     is_resistance_flat = np.isclose(slope_resistance, 0, atol=slope_tolerance)
 
-    if is_support_up and is_resistance_up:
-        return "Контекст канала: Восходящий"
-    elif is_support_down and is_resistance_down:
-        return "Контекст канала: Нисходящий"
-    elif is_support_flat and is_resistance_flat:
-        return "Контекст канала: Горизонтальный (Рендж)"
-    elif is_support_up and is_resistance_down: 
-        return "Контекст канала: Сужающийся (Клин)"
-    elif is_support_down and is_resistance_up: 
-        return "Контекст канала: Расширяющийся"
-    else:
-        if is_support_flat and is_resistance_up: return "Контекст канала: Восходящий треугольник"
-        if is_support_flat and is_resistance_down: return "Контекст канала: Нисходящий треугольник"
-        if is_support_up and is_resistance_flat: return "Контекст канала: Восходящий треугольник (поддержка)" 
-        if is_support_down and is_resistance_flat: return "Контекст канала: Нисходящий треугольник (сопротивление)"
-        
-        return f"Контекст канала: Смешанный (S:{slope_support:.2e}, R:{slope_resistance:.2e})"
+    if is_support_up and is_resistance_up: return "Восходящий канал"
+    elif is_support_down and is_resistance_down: return "Нисходящий канал"
+    elif is_support_flat and is_resistance_flat: return "Горизонтальный канал (Рендж)"
+    elif is_support_up and is_resistance_flat: return "Восходящий треугольник (плоское сопротивление)"
+    elif is_support_flat and is_resistance_down: return "Нисходящий треугольник (плоская поддержка)"
+    elif is_support_up and is_resistance_down: return "Сужающийся клин" # Обе линии сходятся
+    elif is_support_down and is_resistance_up: return "Расширяющаяся формация" # Обе линии расходятся
+    
+    # Более детальные случаи, если нужны
+    # if is_support_flat and is_resistance_up: return "Восходящий канал (плоская поддержка)" # Редко, но возможно
+    # if is_support_down and is_resistance_flat: return "Нисходящий канал (плоское сопротивление)" # Редко
+
+    return f"Смешанный (S:{slope_support:.2e}, R:{slope_resistance:.2e})"
 
 
 def determine_trend_lines_v2(swing_highs: list, swing_lows: list, 
                              last_data_timestamp: pd.Timestamp = None, 
                              price_data_for_offset: pd.DataFrame = None, 
                              points_window_size: int = 5):
+    """
+    Определяет линии тренда на основе последних свингов.
+    V2: Использует две самые экстремальные точки из последних N свингов по времени.
+    Линии продлеваются до last_data_timestamp.
+    Добавлен небольшой отступ от цен для лучшей визуализации.
+    """
     trend_lines = []
-    offset_percentage = 0.002 
+    
+    # Отступ для линий от фактических цен (в процентах от средней цены)
+    # Можно вынести в settings
+    offset_percentage = settings.TRENDLINE_OFFSET_PERCENTAGE if hasattr(settings, 'TRENDLINE_OFFSET_PERCENTAGE') else 0.001 # 0.1%
     offset_amount = 0
 
     if price_data_for_offset is not None and not price_data_for_offset.empty:
+        # Расчет средней цены для определения абсолютного отступа
         if 'high' in price_data_for_offset.columns and 'low' in price_data_for_offset.columns: 
-             avg_price = (price_data_for_offset['high'] + price_data_for_offset['low']).mean() / 2
-        elif isinstance(price_data_for_offset, pd.Series) and price_data_for_offset.name == 'close':
-            avg_price = price_data_for_offset.mean()
-        else: 
-            avg_price = 0 
-            # print("determine_trend_lines_v2: Не удалось рассчитать avg_price для смещения.")
-        if avg_price > 0: 
-            offset_amount = avg_price * offset_percentage
-        # else:
-            # print(f"determine_trend_lines_v2: avg_price ({avg_price}) не положительный, offset_amount не будет применен.")
+             avg_price_calc = (price_data_for_offset['high'].mean() + price_data_for_offset['low'].mean()) / 2
+        elif 'close' in price_data_for_offset.columns:
+            avg_price_calc = price_data_for_offset['close'].mean()
+        else:
+            avg_price_calc = 0
+        
+        if avg_price_calc > 0: 
+            offset_amount = avg_price_calc * offset_percentage
 
-    if not last_data_timestamp:
+    if not last_data_timestamp: # Если не передана последняя дата, берем из свингов
         all_swing_times = [p['time'] for p in swing_highs] + [p['time'] for p in swing_lows]
-        if not all_swing_times: return trend_lines
+        if not all_swing_times: return trend_lines # Нет данных для построения
         last_data_timestamp = max(all_swing_times)
-
-    p_start_high_for_ref = None
-    p_end_for_slope_high_for_ref = None
     
+    # --- Линия сопротивления (по Swing Highs) ---
     if len(swing_highs) >= 2:
+        # Сортируем все Swing Highs по времени (самые последние сначала)
         all_time_sorted_highs = sorted(swing_highs, key=lambda x: x['time'], reverse=True)
+        # Берем окно последних по времени свингов
         recent_highs_by_time = all_time_sorted_highs[:points_window_size]
+        
         if len(recent_highs_by_time) >= 2:
+            # Из этого окна выбираем два самых высоких по цене
             recent_highs_by_time.sort(key=lambda x: x['price'], reverse=True) 
-            points_for_line_high = sorted(recent_highs_by_time[:2], key=lambda x: x['time'])
-            p_start_high_for_ref = points_for_line_high[0] 
-            p_end_for_slope_high_for_ref = points_for_line_high[1]
+            # Берем две точки с самыми высокими ценами из недавних
+            points_for_line_high = sorted(recent_highs_by_time[:2], key=lambda x: x['time']) # Сортируем их по времени для линии
+            
+            p_start_h = points_for_line_high[0] 
+            p_end_h = points_for_line_high[1]
 
-            start_price_orig_high = p_start_high_for_ref['price']
-            end_price_for_slope_high = p_end_for_slope_high_for_ref['price']
-            final_end_time_high = last_data_timestamp
-            final_projected_price_high = end_price_for_slope_high
+            start_price_orig_h = p_start_h['price']
+            end_price_orig_h = p_end_h['price']
+            
+            # Проекция линии на last_data_timestamp
+            final_projected_price_h = end_price_orig_h # По умолчанию, если точки во времени совпадают или идут вразнобой
+            if p_start_h['time'] < p_end_h['time']: # Убедимся, что начальная точка раньше конечной
+                slope_h = get_line_slope(p_start_h['time'], start_price_orig_h, p_end_h['time'], end_price_orig_h)
+                if slope_h != 0 or (start_price_orig_h == end_price_orig_h) : # Если не вертикальная линия
+                    time_delta_to_project_h = (last_data_timestamp - p_start_h['time']).total_seconds()
+                    final_projected_price_h = start_price_orig_h + slope_h * time_delta_to_project_h
+            
+            # Применяем отступ
+            start_price_offset_h = start_price_orig_h + offset_amount
+            final_projected_price_offset_h = final_projected_price_h + offset_amount
 
-            if p_start_high_for_ref['time'] < p_end_for_slope_high_for_ref['time']:
-                time_delta_original_seconds = (p_end_for_slope_high_for_ref['time'] - p_start_high_for_ref['time']).total_seconds()
-                price_delta_original = end_price_for_slope_high - start_price_orig_high
-                if time_delta_original_seconds > 0:
-                    slope = price_delta_original / time_delta_original_seconds
-                    time_delta_to_projected_end_seconds = (last_data_timestamp - p_start_high_for_ref['time']).total_seconds()
-                    final_projected_price_high = start_price_orig_high + slope * time_delta_to_projected_end_seconds
-
-            start_price_offset_high = start_price_orig_high + offset_amount
-            final_projected_price_offset_high = final_projected_price_high + offset_amount
-
-            if p_start_high_for_ref['time'] < final_end_time_high:
+            if p_start_h['time'] < last_data_timestamp: # Рисуем только если линия идет вперед во времени
                 trend_lines.append({
-                    'start_time': p_start_high_for_ref['time'], 'start_price': start_price_offset_high,
-                    'end_time': final_end_time_high, 'end_price': final_projected_price_offset_high,
-                    'color': '#EF5350', 'lineStyle': LINE_STYLE_SOLID
+                    'start_time': p_start_h['time'], 'start_price': start_price_offset_h,
+                    'end_time': last_data_timestamp, 'end_price': final_projected_price_offset_h,
+                    'color': '#EF5350', 'lineStyle': LINE_STYLE_SOLID # Красный для сопротивления
                 })
 
-    if p_start_high_for_ref and p_end_for_slope_high_for_ref and price_data_for_offset is not None and 'low' in price_data_for_offset.columns:
-        time1_ref = p_start_high_for_ref['time']
-        time2_ref = p_end_for_slope_high_for_ref['time']
-        try:
-            price_at_time1_low = price_data_for_offset.loc[time1_ref]['low']
-            price_at_time2_low = price_data_for_offset.loc[time2_ref]['low']
-            start_price_orig_low = price_at_time1_low
-            end_price_for_slope_low = price_at_time2_low
-            final_end_time_low = last_data_timestamp
-            final_projected_price_low = end_price_for_slope_low
-            if time1_ref < time2_ref: 
-                time_delta_original_seconds = (time2_ref - time1_ref).total_seconds()
-                price_delta_original = end_price_for_slope_low - start_price_orig_low 
-                if time_delta_original_seconds > 0:
-                    slope = price_delta_original / time_delta_original_seconds
-                    time_delta_to_projected_end_seconds = (last_data_timestamp - time1_ref).total_seconds()
-                    final_projected_price_low = start_price_orig_low + slope * time_delta_to_projected_end_seconds
-            elif time1_ref == time2_ref:
-                 final_projected_price_low = start_price_orig_low
-            start_price_offset_low = start_price_orig_low - offset_amount
-            final_projected_price_offset_low = final_projected_price_low - offset_amount
-            if time1_ref < final_end_time_low : 
-                trend_lines.append({
-                    'start_time': time1_ref, 'start_price': start_price_offset_low,
-                    'end_time': final_end_time_low, 'end_price': final_projected_price_offset_low,
-                    'color': '#26A69A', 'lineStyle': LINE_STYLE_SOLID
-                })
-        except KeyError as e:
-            print(f"determine_trend_lines_v2: Не удалось найти цену low для времени {e} при построении линии поддержки.")
-        except Exception as e_sup:
-             print(f"determine_trend_lines_v2: Ошибка при построении линии поддержки: {e_sup}")
-    elif len(swing_lows) >= 2: # Fallback, если не удалось построить поддержку на основе сопротивления
+    # --- Линия поддержки (по Swing Lows) ---
+    if len(swing_lows) >= 2:
         all_time_sorted_lows = sorted(swing_lows, key=lambda x: x['time'], reverse=True)
         recent_lows_by_time = all_time_sorted_lows[:points_window_size]
+        
         if len(recent_lows_by_time) >= 2:
-            recent_lows_by_time.sort(key=lambda x: x['price'])
+            recent_lows_by_time.sort(key=lambda x: x['price']) # Сортируем по цене (самые низкие сначала)
             points_for_line_low = sorted(recent_lows_by_time[:2], key=lambda x: x['time'])
-            p_start_low_fb = points_for_line_low[0]
-            p_end_for_slope_low_fb = points_for_line_low[1]
-            start_price_orig_low_fb = p_start_low_fb['price']
-            end_price_for_slope_low_fb = p_end_for_slope_low_fb['price']
-            final_end_time_low_fb = last_data_timestamp
-            final_projected_price_low_fb = end_price_for_slope_low_fb
-            if p_start_low_fb['time'] < p_end_for_slope_low_fb['time']:
-                time_delta_original_seconds_fb = (p_end_for_slope_low_fb['time'] - p_start_low_fb['time']).total_seconds()
-                price_delta_original_fb = end_price_for_slope_low_fb - start_price_orig_low_fb
-                if time_delta_original_seconds_fb > 0:
-                    slope_fb = price_delta_original_fb / time_delta_original_seconds_fb
-                    time_delta_to_projected_end_seconds_fb = (last_data_timestamp - p_start_low_fb['time']).total_seconds()
-                    final_projected_price_low_fb = start_price_orig_low_fb + slope_fb * time_delta_to_projected_end_seconds_fb
-            start_price_offset_low_fb = start_price_orig_low_fb - offset_amount
-            final_projected_price_offset_low_fb = final_projected_price_low_fb - offset_amount
-            if p_start_low_fb['time'] < final_end_time_low_fb:
+            
+            p_start_l = points_for_line_low[0]
+            p_end_l = points_for_line_low[1]
+
+            start_price_orig_l = p_start_l['price']
+            end_price_orig_l = p_end_l['price']
+
+            final_projected_price_l = end_price_orig_l
+            if p_start_l['time'] < p_end_l['time']:
+                slope_l = get_line_slope(p_start_l['time'], start_price_orig_l, p_end_l['time'], end_price_orig_l)
+                if slope_l != 0 or (start_price_orig_l == end_price_orig_l):
+                    time_delta_to_project_l = (last_data_timestamp - p_start_l['time']).total_seconds()
+                    final_projected_price_l = start_price_orig_l + slope_l * time_delta_to_project_l
+            
+            start_price_offset_l = start_price_orig_l - offset_amount # Вычитаем отступ для поддержки
+            final_projected_price_offset_l = final_projected_price_l - offset_amount
+
+            if p_start_l['time'] < last_data_timestamp:
                 trend_lines.append({
-                    'start_time': p_start_low_fb['time'], 'start_price': start_price_offset_low_fb,
-                    'end_time': final_end_time_low_fb, 'end_price': final_projected_price_offset_low_fb,
-                    'color': '#26A69A', 'lineStyle': LINE_STYLE_SOLID
+                    'start_time': p_start_l['time'], 'start_price': start_price_offset_l,
+                    'end_time': last_data_timestamp, 'end_price': final_projected_price_offset_l,
+                    'color': '#26A69A', 'lineStyle': LINE_STYLE_SOLID # Зеленый для поддержки
                 })
     return trend_lines
 
 
-# КЛЮЧЕВОЕ ИЗМЕНЕНИЕ: Убедитесь, что эта функция принимает 5 аргументов
 def summarize_analysis(market_data_df: pd.DataFrame, structure_points: list, 
                        session_fractal_and_setup_points: list, overall_context: str, 
-                       trend_lines_data: list = None): # trend_lines_data - пятый, опциональный аргумент
+                       trend_lines_data: list = None):
     """
-    Формирует текстовую сводку анализа, включая контекст канала.
+    Формирует текстовую сводку анализа, содержащую Market Structure и Trend Lines.
+    Возвращает список словарей для отображения на фронтенде.
     """
-    analysis_summary = {
-        "Общая информация": [], "Подробная информация": [], "Цели": [],
-        "Точки набора": [], "Другое": []
-    }
-    analysis_summary["Общая информация"].append({
-        'description': f"Контекст структуры: {overall_context}", 'status': True }) 
+    context_items = []
 
-    if trend_lines_data: # Проверяем, что список не пустой и не None
-        channel_context = determine_trend_channel_context(trend_lines_data)
-        analysis_summary["Общая информация"].append({'description': channel_context, 'status': True})
+    # 1. Market Structure (Контекст структуры)
+    # overall_context уже содержит текстовое описание структуры (например, "LONG (HH после HL)")
+    market_structure_description = f"Market Structure: {overall_context if overall_context else 'Не определена'}"
+    # Статус можно определить более гранулярно, если нужно (например, True если LONG/SHORT, False если NEUTRAL)
+    market_structure_status = True if overall_context and "NEUTRAL" not in overall_context else False
+    if not overall_context or overall_context == "NEUTRAL (нет данных о структуре)": # Более точная проверка
+        market_structure_status = False
+        market_structure_description = "Market Structure: Не определена (нет данных)"
+
+
+    context_items.append({
+        'description': market_structure_description, 
+        'status': market_structure_status 
+    })
+
+    # 2. Trend Lines (Контекст канала)
+    trend_lines_description = "Trend Lines: "
+    trend_lines_status = False
+    if trend_lines_data and len(trend_lines_data) >= 2:
+        channel_context_text = determine_trend_channel_context(trend_lines_data)
+        trend_lines_description += channel_context_text
+        # Статус True, если канал определен (не "Неопределенный" и не ошибка)
+        if "Неопределенный" not in channel_context_text and "Ошибка" not in channel_context_text:
+            trend_lines_status = True
+    elif trend_lines_data and len(trend_lines_data) == 1:
+        trend_lines_description += "Недостаточно данных (только одна линия)"
     else:
-        analysis_summary["Общая информация"].append({'description': "Контекст канала: Линии не построены", 'status': False})
-
-
-    trend_defining_points = [p for p in structure_points if p['type'] in ['HH', 'HL', 'LH', 'LL']]
-    if len(trend_defining_points) >= 2:
-        last_two_types = f"{trend_defining_points[-2]['type']} -> {trend_defining_points[-1]['type']}"
-        analysis_summary["Общая информация"].append({'description': f"Последние точки HH/HL: {last_two_types}", 'status': True}) 
-    elif len(trend_defining_points) == 1:
-         analysis_summary["Общая информация"].append({'description': f"Последняя точка HH/HL: {trend_defining_points[0]['type']} (начало)", 'status': True}) 
-    elif len(structure_points) >=1 : 
-        non_hh_hl_structure_points = [p for p in structure_points if p['type'] in ['H', 'L']]
-        if non_hh_hl_structure_points:
-            analysis_summary["Общая информация"].append({'description': f"Последняя точка структуры: {non_hh_hl_structure_points[-1]['type']}", 'status': True}) 
-        else: 
-            analysis_summary["Общая информация"].append({'description': "Структура HH/HL: Недостаточно точек", 'status': False})
-    else:
-         analysis_summary["Общая информация"].append({'description': "Структура HH/HL: Недостаточно точек", 'status': False})
-
-
-    setup_points = [p for p in session_fractal_and_setup_points if 'SETUP' in p.get('type', '')]
-    analysis_summary["Общая информация"].append({'description': f"Найдено сетапов: {len(setup_points)}", 'status': len(setup_points) > 0})
-
-    # --- Заглушки для остальных пунктов сводки ---
-    swiped_liquidity_status = False; swiped_liquidity_desc = "Не проверено"
-    if "LONG" in overall_context: swiped_liquidity_desc = "Свип PDH / Биг пула вверх"
-    elif "SHORT" in overall_context: swiped_liquidity_desc = "Свип PDL / Биг пула вниз"
-    else: swiped_liquidity_desc = "Свип ликвидности (нейтральный контекст)"
-    analysis_summary["Подробная информация"].append({'description': swiped_liquidity_desc, 'status': swiped_liquidity_status})
-
-    order_flow_status = False
-    analysis_summary["Подробная информация"].append({'description': "Ордер флоу работа (снятия + тесты блоков)",'status': order_flow_status})
-    asia_sync_status = False; asia_direction_desc = "Не определено"
-    analysis_summary["Подробная информация"].append({'description': f"Азия синхронна ({asia_direction_desc})", 'status': asia_sync_status})
-    range_sweep_status = True; range_sweep_desc = "Нет явного ренджа/свипов по обе стороны"
-    analysis_summary["Подробная информация"].append({'description': range_sweep_desc, 'status': range_sweep_status})
-    htf_sweep_asia_against_trend_status = False
-    analysis_summary["Подробная информация"].append({'description': "Свип HTF Азией против тренда", 'status': not htf_sweep_asia_against_trend_status})
-    frankfurt_london_manipulation_status = False
-    analysis_summary["Подробная информация"].append({'description': "Манипуляции Франкфурт/Лондон", 'status': not frankfurt_london_manipulation_status})
-
-    targets_exist = False; target_distance_met = False; rr_acceptable = False
-    analysis_summary["Цели"].append({'description': f"Цели определены: {'Да' if targets_exist else 'Нет'}", 'status': targets_exist})
-    analysis_summary["Цели"].append({'description': "Расстояние до целей (250/400 пипсов)", 'status': target_distance_met})
-    analysis_summary["Цели"].append({'description': "Допустимый RR", 'status': rr_acceptable})
-
-    has_entry_fractals = len(setup_points) > 0
-    analysis_summary["Точки набора"].append({'description': "Есть фракталы для работы (сетапы)", 'status': has_entry_fractals})
-    invalidation_breached = False
-    analysis_summary["Точки набора"].append({'description': "Идея не инвалидирована (нет закрепления)", 'status': not invalidation_breached})
-
-    is_ott = False
-    analysis_summary["Другое"].append({'description': f"OTT: {'Да' if is_ott else 'Нет'}", 'status': is_ott})
-    has_news = False
-    analysis_summary["Другое"].append({'description': "Нет важных новостей", 'status': not has_news})
-    return analysis_summary
+        trend_lines_description += "Линии не построены или не определены"
+    
+    context_items.append({
+        'description': trend_lines_description,
+        'status': trend_lines_status
+    })
+    
+    return context_items
 
 
 if __name__ == '__main__':
     print("Тестирование context_analyzer_1h.py...")
+    # Устанавливаем тестовые значения для settings, если они отличаются от основных
+    # Эти значения будут использоваться только в этом тестовом запуске
+    settings.SWING_POINT_N = 3 
+    settings.TRENDLINE_POINTS_WINDOW_SIZE = 5 
+    settings.TRENDLINE_OFFSET_PERCENTAGE = 0.001
+    settings.TRENDLINE_SLOPE_TOLERANCE = 0.000005
+
+
     rng = pd.date_range(start='2023-01-01 00:00', end='2023-01-03 23:59', freq='1H', tz='UTC')
     data_dict = { 
         'open': [100, 102, 101, 103, 102, 105, 104, 106, 105, 107, 106, 108, 107, 105, 106, 104, 102, 103, 101, 100] * (len(rng)//20 +1) [:len(rng)],
@@ -482,35 +455,39 @@ if __name__ == '__main__':
     print(f"\nТестирование с SWING_POINT_N = {settings.SWING_POINT_N}")
     sw_h, sw_l = find_swing_points(test_df, n=settings.SWING_POINT_N)
     print(f"Найдено свингов: Highs={len(sw_h)}, Lows={len(sw_l)}")
-    if sw_h: print(f"  Пример Swing High: {sw_h[0]}")
-    if sw_l: print(f"  Пример Swing Low: {sw_l[0]}")
+    if sw_h: print(f"  Пример Swing High: {sw_h[0]['time']} - {sw_h[0]['price']:.2f}")
+    if sw_l: print(f"  Пример Swing Low: {sw_l[0]['time']} - {sw_l[0]['price']:.2f}")
 
 
     struct_pts = analyze_market_structure_points(sw_h, sw_l) 
     print("\nТочки структуры (HH/HL и т.д.):")
-    for pt in struct_pts[-5:]:
-        print(f"  Время: {pt['time']}, Цена: {pt['price']:.2f}, Тип: {pt['type']}")
+    for pt_idx, pt in enumerate(struct_pts[-5:]): # Показываем последние 5
+        print(f"  {pt_idx}: Время: {pt['time']}, Цена: {pt['price']:.2f}, Тип: {pt['type']}")
 
-    context = determine_overall_market_context(struct_pts) 
-    print(f"\nОбщий контекст (из HH/HL): {context}")
+    overall_ctx = determine_overall_market_context(struct_pts) 
+    print(f"\nОбщий контекст структуры: {overall_ctx}")
 
     last_ts_for_lines = test_df.index[-1] if not test_df.empty else None
     trend_lines_for_summary = []
     if last_ts_for_lines:
-        trend_lines_for_summary = determine_trend_lines_v2(sw_h, sw_l, last_ts_for_lines, test_df, points_window_size=3) 
-        print(f"\nЛинии тренда (новая логика, v2 со смещением, окно=3): {len(trend_lines_for_summary)}")
+        trend_lines_for_summary = determine_trend_lines_v2(
+            sw_h, sw_l, 
+            last_ts_for_lines, 
+            test_df[['high', 'low', 'close']], # Передаем DataFrame для расчета отступа
+            points_window_size=settings.TRENDLINE_POINTS_WINDOW_SIZE
+        ) 
+        print(f"\nЛинии тренда (v2, окно={settings.TRENDLINE_POINTS_WINDOW_SIZE}): {len(trend_lines_for_summary)}")
         for tl_idx, tl_val in enumerate(trend_lines_for_summary):
-            print(f"  Линия {tl_idx+1}: {tl_val['start_time']} ({tl_val['start_price']:.2f}) -> {tl_val['end_time']} ({tl_val['end_price']:.2f}) Color: {tl_val['color']}")
+            print(f"  Линия {tl_idx+1}: {tl_val['start_time']} ({tl_val['start_price']:.3f}) -> {tl_val['end_time']} ({tl_val['end_price']:.3f}) Цвет: {tl_val['color']}")
     else:
         print("\nНе удалось определить last_ts_for_lines для теста determine_trend_lines_v2.")
 
-    # Передаем trend_lines_for_summary в summarize_analysis
-    summary = summarize_analysis(test_df, struct_pts, [], context, trend_lines_for_summary)
-    print("\nСводка анализа:")
-    for section, items in summary.items():
-        print(f"--- {section} ---")
-        if items:
-            for item in items:
-                print(f"  - {item['description']} ({'✓' if item.get('status', False) else '✗'})")
-        else:
-            print("  Нет данных.")
+    # Тестируем summarize_analysis
+    # session_fractal_and_setup_points передаем как пустой список для этого теста
+    summary_items = summarize_analysis(test_df, struct_pts, [], overall_ctx, trend_lines_for_summary) 
+    print("\nСводка анализа (только Context items):")
+    if summary_items:
+        for item_idx, item_val in enumerate(summary_items):
+            print(f"  {item_idx}: {item_val['description']} (Статус: {'✓' if item_val.get('status') else '✗'})")
+    else:
+        print("  Нет данных для сводки.")
