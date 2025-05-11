@@ -117,7 +117,7 @@ window.addEventListener('load', () => {
                 }
                 const userLine = chart.addSeries(LightweightCharts.LineSeries, {
                     color: 'purple', lineWidth: 2,
-                    lineStyle: LightweightCharts.LineStyle.Dashed, 
+                    lineStyle: LightweightCharts.LineStyle.Solid, 
                     lastValueVisible: false, priceLineVisible: false,
                 });
                 userLine.setData([
@@ -144,8 +144,6 @@ window.addEventListener('load', () => {
     }
 
     function formatOhlcvData(data) {
-        // Данные с сервера приходят в UTC (или должны быть преобразованы в UTC timestamp)
-        // Lightweight Charts автоматически преобразует их в timezone, указанную в timeScale
         return data.map(item => ({
             time: new Date(item.time).getTime() / 1000, 
             open: parseFloat(item.open), high: parseFloat(item.high),
@@ -277,10 +275,9 @@ window.addEventListener('load', () => {
             let todayTimestampUTC;
             if (backtestDate) { 
                 const [year, month, day] = backtestDate.split('-').map(Number);
-                // Важно: getTime() вернет timestamp в миллисекундах UTC. Делим на 1000 для секунд.
                 todayTimestampUTC = new Date(Date.UTC(year, month - 1, day, 0, 0, 0)).getTime() / 1000;
             } else { 
-                const lastCandleTime = new Date(formattedOhlcv[formattedOhlcv.length - 1].time * 1000); // Преобразуем секунды в мс для Date
+                const lastCandleTime = new Date(formattedOhlcv[formattedOhlcv.length - 1].time * 1000); 
                 todayTimestampUTC = new Date(Date.UTC(lastCandleTime.getUTCFullYear(), lastCandleTime.getUTCMonth(), lastCandleTime.getUTCDate(), 0, 0, 0)).getTime() / 1000;
             }
 
@@ -302,7 +299,7 @@ window.addEventListener('load', () => {
                 }
 
                 daySeparatorLineSeries = chart.addSeries(LightweightCharts.LineSeries, {
-                    color: 'rgba(180, 180, 180, 0.7)', 
+                    color: '#000000', // Изменен цвет на черный
                     lineWidth: 1,
                     lineStyle: LightweightCharts.LineStyle.Dashed,
                     lastValueVisible: false,
