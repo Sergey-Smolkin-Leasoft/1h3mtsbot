@@ -22,7 +22,6 @@ window.addEventListener('load', () => {
     // Добавляем проверку, что LightweightCharts доступен
     if (typeof LightweightCharts === 'undefined') {
         console.error('Библиотека LightweightCharts не загружена.');
-        // Возможно, стоит добавить задержку и попробовать снова, или показать сообщение пользователю
         return;
     }
 
@@ -116,15 +115,16 @@ window.addEventListener('load', () => {
 
     function formatMarkerData(data) {
          const markerMap = {
-             // --- МАРКЕРЫ СТРУКТУРЫ РЫНКА (HH, HL, LH, LL) ---
-             'HH': { shape: 'square', color: 'blue', position: 'aboveBar', text: 'HH', size: 1 },
-             'HL': { shape: 'square', color: 'green', position: 'belowBar', text: 'HL', size: 1 },
-             'LH': { shape: 'square', color: 'red', position: 'aboveBar', text: 'LH', size: 1 },
-             'LL': { shape: 'square', color: 'purple', position: 'belowBar', text: 'LL', size: 1 },
+             // --- МАРКЕРЫ СТРУКТУРЫ РЫНКА (HH, HL, LH, LL) - ТЕПЕРЬ "ТОЛЬКО ТЕКСТ" ---
+             // Форма сделана очень маленьким кружком (size: 0), чтобы была почти невидима
+             'HH': { shape: 'circle', color: 'blue', position: 'aboveBar', text: 'HH', size: 0 },
+             'HL': { shape: 'circle', color: 'green', position: 'belowBar', text: 'HL', size: 0 },
+             'LH': { shape: 'circle', color: 'red', position: 'aboveBar', text: 'LH', size: 0 },
+             'LL': { shape: 'circle', color: 'purple', position: 'belowBar', text: 'LL', size: 0 },
 
-             // Простые максимумы/минимумы (H, L) - теперь с текстом
-             'H': { shape: 'square', color: '#808080', position: 'aboveBar', size: 0.8, text: 'H' },
-             'L': { shape: 'square', color: '#808080', position: 'belowBar', size: 0.8, text: 'L' },
+             // Простые максимумы/минимумы (H, L) - также "только текст"
+             'H': { shape: 'circle', color: '#808080', position: 'aboveBar', size: 0, text: 'H' },
+             'L': { shape: 'circle', color: '#808080', position: 'belowBar', size: 0, text: 'L' },
 
              // Сетапы УДАЛЕНЫ по запросу пользователя
              // 'SETUP_Resist': { shape: 'square', color: '#000000', position: 'aboveBar', size: 1.5 },
@@ -145,10 +145,10 @@ window.addEventListener('load', () => {
              return {
                  time: new Date(item.time).getTime() / 1000,
                  position: markerType.position,
-                 color: markerType.color,
+                 color: markerType.color, // Этот цвет будет применен к тексту и крошечной форме
                  shape: markerType.shape,
                  text: markerType.text !== undefined ? markerType.text : item.type,
-                 size: markerType.size || 1,
+                 size: markerType.size !== undefined ? markerType.size : 1, // Используем size из карты, если есть, иначе 1
              };
          });
      }
@@ -185,9 +185,9 @@ window.addEventListener('load', () => {
 
         if (summaryData) {
             for (const section in summaryData) {
-                if (sectionContainers[section] && summaryData[section] && Array.isArray(summaryData[section])) { // Добавлена проверка на массив
+                if (sectionContainers[section] && summaryData[section] && Array.isArray(summaryData[section])) {
                     const ulElement = sectionContainers[section].querySelector('ul');
-                    if (ulElement) { // Добавлена проверка на существование ulElement
+                    if (ulElement) { 
                         if (summaryData[section].length > 0) {
                             summaryData[section].forEach(item => {
                                 const listItem = document.createElement('li');
@@ -214,7 +214,7 @@ window.addEventListener('load', () => {
              for (const section in sectionContainers) {
                  if (sectionContainers[section]) {
                      const ulElement = sectionContainers[section].querySelector('ul');
-                     if (ulElement) { // Добавлена проверка
+                     if (ulElement) { 
                         const listItem = document.createElement('li');
                         listItem.textContent = 'Нет данных сводки анализа.';
                         ulElement.appendChild(listItem);
@@ -261,11 +261,15 @@ window.addEventListener('load', () => {
                 } else {
                     console.error('loadChartData: Невозможно установить маркеры: createSeriesMarkers и setMarkers недоступны.');
                 }
-            } else if (candlestickSeries) { // Убрана проверка на createSeriesMarkers для очистки
+            } else if (candlestickSeries) { 
                  const clearMarkersFunction = LightweightCharts.createSeriesMarkers || candlestickSeries.setMarkers;
-                 if (clearMarkersFunction) {
+                 if (clearMarkersFunction && typeof clearMarkersFunction === 'function') {
                     console.log('loadChartData: Нет данных маркеров, очищаем маркеры.');
-                    clearMarkersFunction.call(candlestickSeries, []); // Используем .call для setMarkers, если это он
+                    if (LightweightCharts.createSeriesMarkers) { 
+                        LightweightCharts.createSeriesMarkers(candlestickSeries, []);
+                    } else {
+                        candlestickSeries.setMarkers([]); 
+                    }
                  } else {
                     console.error('loadChartData: Невозможно очистить маркеры.');
                  }
@@ -307,11 +311,15 @@ window.addEventListener('load', () => {
                 candlestickSeries.setData([]);
                 console.log('loadChartData: График очищен.');
             }
-             if (candlestickSeries) { // Убрана проверка на createSeriesMarkers для очистки
+             if (candlestickSeries) { 
                  const clearMarkersFunction = LightweightCharts.createSeriesMarkers || candlestickSeries.setMarkers;
-                 if (clearMarkersFunction) {
+                 if (clearMarkersFunction && typeof clearMarkersFunction === 'function') { 
                     console.log('loadChartData: Нет данных графика, очищаем маркеры.');
-                    clearMarkersFunction.call(candlestickSeries, []);
+                     if (LightweightCharts.createSeriesMarkers) { 
+                        LightweightCharts.createSeriesMarkers(candlestickSeries, []);
+                    } else {
+                        candlestickSeries.setMarkers([]); 
+                    }
                  } else {
                     console.error('loadChartData: Невозможно очистить маркеры при отсутствии данных графика.');
                  }
