@@ -14,10 +14,10 @@ try:
     from core.data_fetcher import get_forex_data
     from ts_logic.context_analyzer_1h import (
         find_swing_points,
-        analyze_market_structure_points, 
-        determine_overall_market_context, 
-        determine_trend_lines_v2, 
-        summarize_analysis 
+        analyze_market_structure_points,
+        determine_overall_market_context,
+        determine_trend_lines_v2,
+        summarize_analysis
     )
     from ts_logic.fractal_analyzer import analyze_fractal_setups
 
@@ -33,7 +33,7 @@ INTERVAL_MAP_API = {
     "4h": "4h", "8h": "8h", "1d": "1day", "1w": "1week", "1M": "1month"
 }
 
-ANALYSIS_ENABLED_TIMEFRAMES = ['1h', '4h'] 
+ANALYSIS_ENABLED_TIMEFRAMES = ['1h', '4h']
 
 
 @app.route('/')
@@ -60,7 +60,7 @@ def get_chart_data():
             end_date = None
 
     api_end_date = end_date if end_date else datetime.now(timezone.utc)
-    days_to_fetch = 60 
+    days_to_fetch = 60
     api_start_date = api_end_date - timedelta(days=days_to_fetch)
 
     market_data_df = get_forex_data(
@@ -68,10 +68,12 @@ def get_chart_data():
         start_date=api_start_date, end_date=api_end_date
     )
 
-    # MODIFIED: empty_summary is now a list for the context items
-    empty_summary = [] 
+    # MODIFIED: empty_summary is now a list for the context items, added fractal_count
+    empty_summary = []
+    fractal_count = 0
     if market_data_df is None or market_data_df.empty:
-        return jsonify({"ohlcv": [], "markers": [], "trendLines": [], "analysisSummary": empty_summary}), 500
+        # MODIFIED: Include fractal_count in the response
+        return jsonify({"ohlcv": [], "markers": [], "trendLines": [], "analysisSummary": empty_summary, "fractalCount": fractal_count}), 500
 
     if market_data_df.index.tzinfo is None:
         market_data_df = market_data_df.tz_localize('UTC')
@@ -79,93 +81,96 @@ def get_chart_data():
         market_data_df = market_data_df.tz_convert('UTC')
 
     market_data_df_filtered = market_data_df
-    if end_date: 
+    if end_date:
         market_data_df_filtered = market_data_df[market_data_df.index <= end_date]
         if market_data_df_filtered.empty:
-            # MODIFIED: Use the new empty_summary list
-            return jsonify({"ohlcv": [], "markers": [], "trendLines": [], "analysisSummary": empty_summary}), 200
-    
+            # MODIFIED: Use the new empty_summary list and include fractal_count
+            return jsonify({"ohlcv": [], "markers": [], "trendLines": [], "analysisSummary": empty_summary, "fractalCount": fractal_count}), 200
+
     ohlcv_data = []
     if not market_data_df_filtered.empty:
         for index, row in market_data_df_filtered.iterrows():
-            time_str = index.isoformat() 
+            time_str = index.isoformat()
             ohlcv_data.append({
                 "time": time_str, "open": row['open'], "high": row['high'],
                 "low": row['low'], "close": row['close'],
             })
 
     marker_data = []
-    trend_lines_data = [] 
+    trend_lines_data = []
     # MODIFIED: analysis_summary_data initialized as a list
     analysis_summary_data = empty_summary[:] # Use a copy
+    fractal_count = 0 # Initialize fractal count
 
     last_df_timestamp_for_trendlines = None
-    data_for_offset_calculation = None 
+    data_for_offset_calculation = None
 
     if not market_data_df_filtered.empty:
         last_df_timestamp_for_trendlines = market_data_df_filtered.index[-1]
         if not isinstance(last_df_timestamp_for_trendlines, pd.Timestamp):
             last_df_timestamp_for_trendlines = None
-        data_for_offset_calculation = market_data_df_filtered 
+        data_for_offset_calculation = market_data_df_filtered
 
     if interval_from_request in ANALYSIS_ENABLED_TIMEFRAMES and not market_data_df_filtered.empty:
         try:
             current_processing_datetime = market_data_df_filtered.index[-1].to_pydatetime()
-            swing_n_for_current_tf = settings.SWING_POINT_N 
-            
+            swing_n_for_current_tf = settings.SWING_POINT_N
+
             swing_highs, swing_lows = find_swing_points(market_data_df_filtered, n=swing_n_for_current_tf)
             structure_points = analyze_market_structure_points(swing_highs, swing_lows)
-            overall_context = determine_overall_market_context(structure_points) 
+            overall_context = determine_overall_market_context(structure_points)
 
             all_points_for_plot = []
-            if structure_points: 
+            if structure_points:
                 all_points_for_plot.extend(structure_points)
-            
+
             session_fractal_and_setup_points = analyze_fractal_setups(market_data_df_filtered, current_processing_datetime)
             if session_fractal_and_setup_points:
                 all_points_for_plot.extend(session_fractal_and_setup_points)
-            
+                # MODIFIED: Count the fractal setup points
+                fractal_count = sum(1 for p in session_fractal_and_setup_points if 'SETUP' in p.get('type', ''))
+
             all_points_for_plot.sort(key=lambda x: x['time'])
             unique_points_for_plot = []
             seen_marker_keys = set()
             for point in all_points_for_plot:
                 time_key_str = point['time'].strftime('%Y-%m-%dT%H:%M')
-                price_key_rounded = round(point['price'], 5) 
+                price_key_rounded = round(point['price'], 5)
                 key = (time_key_str, point.get('type', 'UNKNOWN_MARKER'), price_key_rounded)
                 if key not in seen_marker_keys:
                     unique_points_for_plot.append(point)
                     seen_marker_keys.add(key)
-            
+
             for point in unique_points_for_plot:
                 marker_data.append({
-                    "time": point['time'].isoformat(), 
-                    "type": point.get('type', 'UNKNOWN_MARKER'), 
+                    "time": point['time'].isoformat(),
+                    "type": point.get('type', 'UNKNOWN_MARKER'),
                     "price": point['price'],
                 })
 
-            if last_df_timestamp_for_trendlines and data_for_offset_calculation is not None and not data_for_offset_calculation.empty: 
+            if last_df_timestamp_for_trendlines and data_for_offset_calculation is not None and not data_for_offset_calculation.empty:
                  points_window = settings.TRENDLINE_POINTS_WINDOW_SIZE if hasattr(settings, 'TRENDLINE_POINTS_WINDOW_SIZE') else 5
                  trend_lines_data = determine_trend_lines_v2(
-                     swing_highs, 
-                     swing_lows, 
-                     last_df_timestamp_for_trendlines, 
+                     swing_highs,
+                     swing_lows,
+                     last_df_timestamp_for_trendlines,
                      data_for_offset_calculation,
                      points_window_size=points_window
                  )
-            
-            # MODIFIED: summarize_analysis now returns a list of context items
+
+            # summarize_analysis now returns a list of context items
             analysis_summary_data = summarize_analysis(
                 market_data_df_filtered,
-                structure_points, 
+                structure_points,
                 session_fractal_and_setup_points if session_fractal_and_setup_points else [],
                 overall_context,
-                trend_lines_data 
+                trend_lines_data
             )
         except Exception as e_analysis:
             print(f"API: Ошибка во время выполнения аналитики для {interval_from_request}: {e_analysis}")
             import traceback
             print(traceback.format_exc())
-            # MODIFIED: Add error to the list
+            # Add error to the list
             analysis_summary_data.append({'description': f"Ошибка при анализе ТФ {interval_from_request}.", 'status': False})
     else:
         default_text = f"Полный анализ (линии, структура HH/HL, сессии, сводка) доступен для ТФ: {', '.join(ANALYSIS_ENABLED_TIMEFRAMES)}."
@@ -178,7 +183,8 @@ def get_chart_data():
         "ohlcv": ohlcv_data,
         "markers": marker_data,
         "trendLines": trend_lines_data,
-        "analysisSummary": analysis_summary_data # This is now a list of context items
+        "analysisSummary": analysis_summary_data, # This is now a list of context items
+        "fractalCount": fractal_count # MODIFIED: Include fractal count in the response
     })
 
 if __name__ == '__main__':
