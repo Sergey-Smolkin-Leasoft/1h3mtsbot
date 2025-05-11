@@ -10,13 +10,10 @@ window.addEventListener('load', () => {
     const toolTrendlineButton = document.getElementById('tool-trendline');
     const clearDrawnLinesButton = document.getElementById('clear-drawn-lines');
 
-    const generalSummaryDiv = document.getElementById('analysis-summary-general');
-    const detailedSummaryDiv = document.getElementById('analysis-summary-detailed');
-    const targetsSummaryDiv = document.getElementById('analysis-summary-targets');
-    const entryPointsSummaryDiv = document.getElementById('analysis-summary-entry-points');
-    const otherSummaryDiv = document.getElementById('analysis-summary-other');
+    // MODIFIED: Get the new context section div
+    const contextAnalysisSectionDiv = document.getElementById('analysis-context-section'); 
 
-    if (!chartContainer || !chartContainerWrapper || !toolTrendlineButton || !clearDrawnLinesButton || !toolPointerButton) {
+    if (!chartContainer || !chartContainerWrapper || !toolTrendlineButton || !clearDrawnLinesButton || !toolPointerButton || !contextAnalysisSectionDiv) { // Added contextAnalysisSectionDiv check
         console.error('Один или несколько необходимых HTML элементов не найдены!');
         return;
     }
@@ -50,7 +47,6 @@ window.addEventListener('load', () => {
         });
         chartContainer.style.cursor = (currentDrawingTool === 'pointer') ? 'default' : 'crosshair';
         firstClickPoint = null; 
-        // console.log("Активный инструмент:", currentDrawingTool);
     }
 
 
@@ -70,7 +66,7 @@ window.addEventListener('load', () => {
                 timeVisible: true, 
                 secondsVisible: false, 
                 borderColor: '#B0B0B0',
-                timezone: 'Etc/GMT-3', // Устанавливаем часовой пояс UTC+3
+                timezone: 'Etc/GMT-3', 
             },
             crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
             priceScale: { borderColor: '#B0B0B0' },
@@ -139,7 +135,8 @@ window.addEventListener('load', () => {
             return await response.json();
         } catch (error) {
             console.error('fetchChartData: Ошибка при получении данных графика:', error);
-            return { ohlcv: [], markers: [], trendLines: [], analysisSummary: {"Общая информация": [], "Подробная информация": [], "Цели": [], "Точки набора": [], "Другое": []} };
+            // MODIFIED: analysisSummary is now a list
+            return { ohlcv: [], markers: [], trendLines: [], analysisSummary: [] }; 
         }
     }
 
@@ -192,58 +189,46 @@ window.addEventListener('load', () => {
         }));
     }
 
-    function displayAnalysisSummary(summaryData) {
-        // ... (код без изменений, как в предыдущей версии)
-        if (generalSummaryDiv) generalSummaryDiv.querySelector('ul').innerHTML = '';
-        if (detailedSummaryDiv) detailedSummaryDiv.querySelector('ul').innerHTML = '';
-        if (targetsSummaryDiv) targetsSummaryDiv.querySelector('ul').innerHTML = '';
-        if (entryPointsSummaryDiv) entryPointsSummaryDiv.querySelector('ul').innerHTML = '';
-        if (otherSummaryDiv) otherSummaryDiv.querySelector('ul').innerHTML = '';
+    // MODIFIED: displayAnalysisSummary to handle a list of context items
+    function displayAnalysisSummary(summaryDataList) { // summaryDataList is now the list of context items
+        if (contextAnalysisSectionDiv) {
+            const ulElement = contextAnalysisSectionDiv.querySelector('ul');
+            if (ulElement) {
+                ulElement.innerHTML = ''; // Clear previous items
 
-        const sectionContainers = {
-            'Общая информация': generalSummaryDiv,
-            'Подробная информация': detailedSummaryDiv,
-            'Цели': targetsSummaryDiv,
-            'Точки набора': entryPointsSummaryDiv,
-            'Другое': otherSummaryDiv
-        };
-        if (summaryData) {
-            for (const section in summaryData) {
-                if (sectionContainers[section] && summaryData[section] && Array.isArray(summaryData[section])) {
-                    const ulElement = sectionContainers[section].querySelector('ul');
-                    if (ulElement) { 
-                        if (summaryData[section].length > 0) {
-                            summaryData[section].forEach(item => {
-                                const listItem = document.createElement('li');
-                                listItem.classList.add('flex', 'items-center', 'mb-1');
-                                const statusIcon = document.createElement('span');
-                                statusIcon.classList.add('mr-2', item.status ? 'text-green-500' : 'text-red-500');
-                                statusIcon.textContent = item.status ? '✓' : '✗';
-                                const description = document.createElement('span');
-                                description.textContent = item.description;
-                                listItem.appendChild(statusIcon);
-                                listItem.appendChild(description);
-                                ulElement.appendChild(listItem);
-                            });
+                if (summaryDataList && Array.isArray(summaryDataList) && summaryDataList.length > 0) {
+                    summaryDataList.forEach(item => {
+                        const listItem = document.createElement('li');
+                        listItem.classList.add('flex', 'items-center', 'mb-1');
+                        
+                        const statusIcon = document.createElement('span');
+                        statusIcon.classList.add('mr-2');
+                        if (item.status === true) {
+                            statusIcon.classList.add('text-green-500');
+                            statusIcon.textContent = '✓';
+                        } else if (item.status === false) {
+                            statusIcon.classList.add('text-red-500');
+                            statusIcon.textContent = '✗';
                         } else {
-                             const listItem = document.createElement('li');
-                             listItem.textContent = `Нет данных для секции "${section}".`;
-                             ulElement.appendChild(listItem);
+                            // Neutral or no status
+                            statusIcon.textContent = '-'; // Or some other indicator
                         }
-                    }
+                        
+                        const description = document.createElement('span');
+                        description.textContent = item.description;
+                        
+                        listItem.appendChild(statusIcon);
+                        listItem.appendChild(description);
+                        ulElement.appendChild(listItem);
+                    });
+                } else {
+                    const listItem = document.createElement('li');
+                    listItem.textContent = 'No context analysis data available.';
+                    ulElement.appendChild(listItem);
                 }
             }
         } else {
-             for (const section in sectionContainers) {
-                 if (sectionContainers[section]) {
-                     const ulElement = sectionContainers[section].querySelector('ul');
-                     if (ulElement) { 
-                        const listItem = document.createElement('li');
-                        listItem.textContent = 'Нет данных сводки анализа.';
-                        ulElement.appendChild(listItem);
-                     }
-                 }
-             }
+            console.error("Element with ID 'analysis-context-section' not found.");
         }
     }
     
@@ -299,7 +284,7 @@ window.addEventListener('load', () => {
                 }
 
                 daySeparatorLineSeries = chart.addSeries(LightweightCharts.LineSeries, {
-                    color: '#000000', // Изменен цвет на черный
+                    color: '#000000', 
                     lineWidth: 1,
                     lineStyle: LightweightCharts.LineStyle.Dashed,
                     lastValueVisible: false,
@@ -347,7 +332,8 @@ window.addEventListener('load', () => {
         } else {
             if (candlestickSeries) candlestickSeries.setData([]);
         }
-        displayAnalysisSummary(chartData ? chartData.analysisSummary : null);
+        // MODIFIED: Pass chartData.analysisSummary (which is now a list)
+        displayAnalysisSummary(chartData ? chartData.analysisSummary : []); 
     }
 
     if (timeframeSelect) {
