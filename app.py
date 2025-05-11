@@ -68,12 +68,15 @@ def get_chart_data():
         start_date=api_start_date, end_date=api_end_date
     )
 
-    # MODIFIED: empty_summary is now a list for the context items, added fractal_count
     empty_summary = []
+    # Initialize fractal_count to 0
     fractal_count = 0
+    # Initialize overall_context to a default value
+    overall_context = "NEUTRAL (нет данных)"
+
     if market_data_df is None or market_data_df.empty:
-        # MODIFIED: Include fractal_count in the response
-        return jsonify({"ohlcv": [], "markers": [], "trendLines": [], "analysisSummary": empty_summary, "fractalCount": fractal_count}), 500
+        # Include fractal_count and overall_context in the response
+        return jsonify({"ohlcv": [], "markers": [], "trendLines": [], "analysisSummary": empty_summary, "fractalCount": fractal_count, "overallContext": overall_context}), 500
 
     if market_data_df.index.tzinfo is None:
         market_data_df = market_data_df.tz_localize('UTC')
@@ -84,8 +87,8 @@ def get_chart_data():
     if end_date:
         market_data_df_filtered = market_data_df[market_data_df.index <= end_date]
         if market_data_df_filtered.empty:
-            # MODIFIED: Use the new empty_summary list and include fractal_count
-            return jsonify({"ohlcv": [], "markers": [], "trendLines": [], "analysisSummary": empty_summary, "fractalCount": fractal_count}), 200
+            # Use the new empty_summary list and include fractal_count and overall_context
+            return jsonify({"ohlcv": [], "markers": [], "trendLines": [], "analysisSummary": empty_summary, "fractalCount": fractal_count, "overallContext": overall_context}), 200
 
     ohlcv_data = []
     if not market_data_df_filtered.empty:
@@ -98,9 +101,12 @@ def get_chart_data():
 
     marker_data = []
     trend_lines_data = []
-    # MODIFIED: analysis_summary_data initialized as a list
     analysis_summary_data = empty_summary[:] # Use a copy
-    fractal_count = 0 # Initialize fractal count
+    # Initialize fractal_count to 0
+    fractal_count = 0
+    # Initialize overall_context again for the analysis part
+    overall_context = "NEUTRAL (недостаточно данных для анализа)"
+
 
     last_df_timestamp_for_trendlines = None
     data_for_offset_calculation = None
@@ -127,8 +133,23 @@ def get_chart_data():
             session_fractal_and_setup_points = analyze_fractal_setups(market_data_df_filtered, current_processing_datetime)
             if session_fractal_and_setup_points:
                 all_points_for_plot.extend(session_fractal_and_setup_points)
-                # MODIFIED: Count the fractal setup points
-                fractal_count = sum(1 for p in session_fractal_and_setup_points if 'SETUP' in p.get('type', ''))
+
+                # MODIFIED: Count fractals based on overall_context and session
+                relevant_fractals = [
+                    p for p in session_fractal_and_setup_points
+                    if p.get('type', '').startswith('F_') and (p.get('session') == 'Asia' or p.get('session') == 'NY (Day -1)')
+                ]
+
+                if "SHORT" in overall_context.upper():
+                    # In a SHORT context, count only High fractals (potential long entries)
+                    fractal_count = sum(1 for p in relevant_fractals if p.get('type', '').startswith('F_H_'))
+                elif "LONG" in overall_context.upper():
+                    # In a LONG context, count only Low fractals (potential short entries)
+                    fractal_count = sum(1 for p in relevant_fractals if p.get('type', '').startswith('F_L_'))
+                else:
+                    # In NEUTRAL or other contexts, count all relevant session fractals
+                    fractal_count = len(relevant_fractals)
+
 
             all_points_for_plot.sort(key=lambda x: x['time'])
             unique_points_for_plot = []
@@ -172,6 +193,8 @@ def get_chart_data():
             print(traceback.format_exc())
             # Add error to the list
             analysis_summary_data.append({'description': f"Ошибка при анализе ТФ {interval_from_request}.", 'status': False})
+            overall_context = "Ошибка анализа контекста" # Set context to error state
+
     else:
         default_text = f"Полный анализ (линии, структура HH/HL, сессии, сводка) доступен для ТФ: {', '.join(ANALYSIS_ENABLED_TIMEFRAMES)}."
         if interval_from_request not in ANALYSIS_ENABLED_TIMEFRAMES:
@@ -179,12 +202,14 @@ def get_chart_data():
         elif market_data_df_filtered.empty:
              analysis_summary_data.append({'description': "Нет данных для анализа.", 'status': False})
 
+
     return jsonify({
         "ohlcv": ohlcv_data,
         "markers": marker_data,
         "trendLines": trend_lines_data,
         "analysisSummary": analysis_summary_data, # This is now a list of context items
-        "fractalCount": fractal_count # MODIFIED: Include fractal count in the response
+        "fractalCount": fractal_count, # Include fractal count in the response
+        "overallContext": overall_context # Include overall context in the response
     })
 
 if __name__ == '__main__':
